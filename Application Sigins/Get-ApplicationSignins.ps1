@@ -6,9 +6,9 @@
 $vars = @{
     # Used to generate an Access Token to query Microsoft Graph API
     Token = @{
-        ClientSecret = "9~S8xGb2x_kBG7i.M8uJw4y_SHs33J.Nh4"
-        ClientID = "bb98a186-d35a-4a71-99b8-544bd852c08d"
-        TenantID = "808b7ce5-9924-441e-ae53-3e42fd8a6d43"
+        ClientSecret = ""
+        ClientID = ""
+        TenantID = ""
         AccessToken = ""
     }
     # CSV Export location for the audit
