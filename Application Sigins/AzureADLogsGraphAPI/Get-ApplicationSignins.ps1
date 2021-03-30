@@ -1,4 +1,12 @@
-# Disclaimer: This repositoty is provided for reference purposes only. The Author takes no responsibility for the use of this code.
+#  Disclaimer:    This code is not supported under any Microsoft standard support program or service.
+#                 This code and information are provided "AS IS" without warranty of any kind, either
+#                 expressed or implied. The entire risk arising out of the use or performance of the
+#                 script and documentation remains with you. Furthermore, Microsoft or the author
+#                 shall not be liable for any damages you may sustain by using this information,
+#                 whether direct, indirect, special, incidental or consequential, including, without
+#                 limitation, damages for loss of business profits, business interruption, loss of business
+#                 information or other pecuniary loss even if it has been advised of the possibility of
+#                 such damages. Read all the implementation and usage notes thoroughly.
 
 # Create a new Application in Azure AD
 # Assign Microsoft Graph Application Permission: AuditLog.Read.All
