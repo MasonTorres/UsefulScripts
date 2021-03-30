@@ -1,3 +1,5 @@
+# Disclaimer: This repositoty is provided for reference purposes only. The Author takes no responsibility for the use of this code.
+
 # Export the new Sign-in logs from Azure AD: ApplicationSignIns, InteractiveSignIns, MSISignIns, NonInteractiveSignIns
 # Add the path to the CSV files in the below variables
 # Run script

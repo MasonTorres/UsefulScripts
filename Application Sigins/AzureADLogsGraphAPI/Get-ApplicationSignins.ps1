@@ -1,3 +1,5 @@
+# Disclaimer: This repositoty is provided for reference purposes only. The Author takes no responsibility for the use of this code.
+
 # Create a new Application in Azure AD
 # Assign Microsoft Graph Application Permission: AuditLog.Read.All
 # Create an Application Secert
