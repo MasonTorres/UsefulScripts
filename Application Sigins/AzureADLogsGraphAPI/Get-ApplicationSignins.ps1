@@ -155,6 +155,12 @@ $AllSignInEventServicePrincipals = @()
 
 # Get Application Sign-Ins
 foreach($app in $Applications){
+    if(( Get-Date $vars.ScriptStartTime).AddMinutes(30) -lt (Get-Date)){
+        Write-Output "Refreshing tokens" 
+        $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+        $vars.ScriptStartTime = Get-Date
+    }
+
     Write-Host "Getting Sign-in events for $($app.displayName)"
     $signInEvents = Get-SignInEvents -Token $vars.token.AccessToken -AppID $app.appId
 
@@ -167,6 +173,12 @@ foreach($app in $Applications){
 
 # Get Service Principal Sign-Ins
 foreach($app in $ServicePrincipals){
+    if(( Get-Date $vars.ScriptStartTime).AddMinutes(30) -lt (Get-Date)){
+        Write-Output "Refreshing tokens" 
+        $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+        $vars.ScriptStartTime = Get-Date
+    }
+    
     Write-Host "Getting Sign-in events for $($app.displayName)"
     $signInEvents = Get-SignInEvents -Token $vars.token.AccessToken -AppID $app.appId
 
