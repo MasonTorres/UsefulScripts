@@ -16,14 +16,14 @@
 $vars = @{
     # Used to generate an Access Token to query Microsoft Graph API
     Token = @{
-        ClientSecret = ""
-        ClientID = ""
-        TenantID = ""
+        ClientSecret = ""
+        ClientID = ""
+        TenantID = ""
         AccessToken = ""
     }
     # CSV Export location for the audit
     Export = @{
-        CSVLoc = "Sign-InEvents-All.csv"
+        CSVLocation = "Sign-InEvents-All.csv"
     }
     ScriptStartTime = Get-Date
 }
@@ -78,7 +78,7 @@ function Get-SignInEventsAll{
     $oneSuccessfulFetch = $False
     $retryCount = 0
     
-    $uri = "https://graph.microsoft.com/beta/auditLogs/signIns?&`$filter=signInEventTypes/any(t: t eq 'nonInteractiveUser' or t eq 'servicePrincipal' or t eq 'managedIdentity' or t eq 'interactiveUser')"
+    $uri = "https://graph.microsoft.com/beta/auditLogs/signIns?`$filter=signInEventTypes/any(t: t eq 'nonInteractiveUser' or t eq 'servicePrincipal' or t eq 'managedIdentity' or t eq 'interactiveUser')"
     $method = "GET"
 
     $ResultNextLink = $uri
@@ -154,7 +154,7 @@ $signInEvents = Get-SignInEventsAll -Token $vars.token.AccessToken
 # Initialise variables to store sign-in statistics
 $AllSignInEvents = @()
 
-foreach($signinEvent in $signinEvents){
+foreach($signinEvent in $signinEvents){ 
     $details = [ordered]@{}
     $details.add("createdDateTime", $signinEvent.createdDateTime)
     $details.add("App DisplayName", $signinEvent.appDisplayName)
@@ -169,4 +169,4 @@ foreach($signinEvent in $signinEvents){
 }
 
 # Export Sign-Ins to CSV
-$AllSignInEvents | export-csv -NoTypeInformation $vars.Export.CSVLoc
+$AllSignInEvents | export-csv -NoTypeInformation $vars.Export.CSVLocation
