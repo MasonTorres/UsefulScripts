@@ -76,6 +76,7 @@ function Get-SignInEventsAll{
     )
 
     $oneSuccessfulFetch = $False
+    $retryCount = 0
     
     $uri = "https://graph.microsoft.com/beta/auditLogs/signIns?&`$filter=signInEventTypes/any(t: t eq 'nonInteractiveUser' or t eq 'servicePrincipal' or t eq 'managedIdentity' or t eq 'interactiveUser')"
     $method = "GET"
@@ -147,10 +148,10 @@ function Get-SignInEventsAll{
 # Get an Access Token
 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
 
+$signInEvents = Get-SignInEventsAll -Token $vars.token.AccessToken
+
 # Initialise variables to store sign-in statistics
 $AllSignInEvents = @()
-
-$signInEvents = Get-SignInEventsAll -Token $vars.token.AccessToken
 
 foreach($signinEvent in $signinEvents){
 
@@ -161,8 +162,9 @@ foreach($signinEvent in $signinEvents){
     $details.add("Service Principal Name", $signinEvent.servicePrincipalName)
     $details.add("UPN", $signinEvent.userPrincipalName)
     $details.add("signInEventTypes", $signinEvent.signInEventTypes -join ";")
-    $details.add("errorCode", $signinEvent.status.errorCode)
-    $details.add("failureReason", $signinEvent.status.failureReason)
+    $details.add("status.errorCode", $signinEvent.status.errorCode)
+    $details.add("status.failureReason", $signinEvent.status.failureReason)
+    $details.add("status.additionalDetails", $signinEvent.status.additionalDetails)
     $AllSignInEvents += New-Object PSObject -Property $details
 }
 
