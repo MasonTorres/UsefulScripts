@@ -148,13 +148,13 @@ function Get-SignInEventsAll{
 # Get an Access Token
 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
 
+# Get all Sign-in events
 $signInEvents = Get-SignInEventsAll -Token $vars.token.AccessToken
 
 # Initialise variables to store sign-in statistics
 $AllSignInEvents = @()
 
 foreach($signinEvent in $signinEvents){
-
     $details = [ordered]@{}
     $details.add("createdDateTime", $signinEvent.createdDateTime)
     $details.add("App DisplayName", $signinEvent.appDisplayName)
