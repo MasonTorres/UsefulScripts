@@ -125,12 +125,12 @@ $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId 
 $AllRiskyUsers = Get-RiskyUsers -Token $vars.Token.AccessToken
 
 # Create a list of risky users whose riskState is not 'dismissed'
-$riskyUsersToDiss = @()
+$riskyUsersToDissmis = @()
 foreach($riskyUser in $AllRiskyUsers){
     if($riskyUser.riskState -ne 'dismissed'){
-        $riskyUsersToDiss+= $riskyUser.id
+        $riskyUsersToDissmis+= $riskyUser.id
     }
 }
 
 # Dismiss risky users
-Dismiss-RiskyUsers -Token $vars.Token.AccessToken -UserIds $riskyUsersToDiss
+Dismiss-RiskyUsers -Token $vars.Token.AccessToken -UserIds $riskyUsersToDissmis
