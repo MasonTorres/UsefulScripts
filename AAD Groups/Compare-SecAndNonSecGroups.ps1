@@ -14,14 +14,23 @@
 # Fill in the veriables below. (leave Access Token blank)
 
 $vars = @{
-    # Used to generate an Access Token to query Microsoft Graph API
+    # Used to generate an Access Token to query Microsoft Graph API.
     Token = @{
         ClientSecret = ""
         ClientID = ""
         TenantID = ""
         AccessToken = ""
     }
+
+    # The ObjectId of the Azure AD user to check.
     UserIDToCheck = ""
+
+    # Set GroupClaimFormat to the return type of your group claims. 
+    # Options: Azure Active Directory Group ObjectId, sAMAccountName, NetbiosDomain\sAMAccountName, DNSDomainName\sAMAccountName, On Premises Group Security Identifier
+    # Any option other than Azure Active Directory Group ObjectId will result in cloud only group not being included in the result.
+    # Reference: https://docs.microsoft.com/en-us/azure/active-directory/hybrid/how-to-connect-fed-group-claims#group-claims-for-applications-migrating-from-ad-fs-and-other-identity-providers
+    GroupClaimFormat = "Azure Active Directory Group ObjectId"
+    
     ScriptStartTime = Get-Date
 }
 
@@ -96,6 +105,24 @@ function Get-Groups{
     return $Groups
 }
 
+function Get-GroupOnPremSyncStatus{
+    Param
+    (
+         [Parameter(Mandatory=$true, Position=0)]
+         [string] $Token,
+         [string] $GroupId
+    )
+
+    $uri = "https://graph.microsoft.com/beta/groups/$GroupId/?`$select=onPremisesSyncEnabled"
+    $method = "GET"
+
+    $Result = Invoke-RestMethod -Method $method -uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token"} -ErrorAction Stop
+    $GroupOnPremisesSyncEnabled = $Result.onPremisesSyncEnabled
+
+
+    return $GroupOnPremisesSyncEnabled
+}
+
 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
 
 $group1 = Get-Groups -Token $vars.Token.AccessToken -SecurityEnabledOnly "true" -UserID $vars.UserIDToCheck
@@ -112,11 +139,17 @@ foreach($group2Members in $group2){
     }
 
     if($isInGroup -eq $false){
-        $GroupsNotIncludedInClaims+=$group2Members
+        if($vars.GroupClaimFormat -eq 'Azure Active Directory Group ObjectId'){
+            $GroupsNotIncludedInClaims+=$group2Members
+        }else{
+            if((Get-GroupOnPremSyncStatus -Token $vars.token.AccessToken -GroupId $group2Members) -eq $true){
+                $GroupsNotIncludedInClaims+=$group2Members
+            }
+        }
     }
 }
 
-Write-Host "$($GroupsNotIncludedInClaims.count) groups omitted from claim"
+Write-Host "$($GroupsNotIncludedInClaims.count) groups omitted from claim" -ForegroundColor Green
 foreach($omittedGroup in $GroupsNotIncludedInClaims){
-    Write-Host "Group: $omittedGroup"
+    Write-Host "Group: $omittedGroup" -ForegroundColor Magenta
 }
