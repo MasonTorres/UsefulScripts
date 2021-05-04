@@ -16,6 +16,7 @@
 
 # This script will dismiss all risky users.
 
+# Variable: Store variables used throughout this script
 $vars = @{
     # Used to generate an Access Token to query Microsoft Graph API.
     Token = @{
@@ -28,6 +29,7 @@ $vars = @{
     ScriptStartTime = Get-Date
 }
 
+# Function: Create Access Token for Microsoft Graph API
 function Get-AppToken{
     Param
     (
@@ -67,6 +69,7 @@ function Get-AppToken{
     return $token
 }
 
+# Function: Get all risky users using Microsoft Graph API
 function Get-RiskyUsers{
     Param
     (
@@ -92,6 +95,7 @@ function Get-RiskyUsers{
     return $RiskyUsers
 }
 
+# Function: Dismiss risky users using Microsoft Graph API
 function Dismiss-RiskyUsers{
     Param
     (
