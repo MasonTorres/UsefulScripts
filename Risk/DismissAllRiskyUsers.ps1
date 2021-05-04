@@ -114,16 +114,19 @@ function Dismiss-RiskyUsers{
     return $Result
 }
 
+# Get our Access Token for Microsoft Graph API
 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
 
+# Get all risky users from Microsoft Graph API
 $AllRiskyUsers = Get-RiskyUsers -Token $vars.Token.AccessToken
 
+# Create a list of risky users whose riskState is not 'dismissed'
 $riskyUsersToDiss = @()
-
 foreach($riskyUser in $AllRiskyUsers){
     if($riskyUser.riskState -ne 'dismissed'){
         $riskyUsersToDiss+= $riskyUser.id
     }
 }
 
+# Dismiss risky users
 Dismiss-RiskyUsers -Token $vars.Token.AccessToken -UserIds $riskyUsersToDiss
