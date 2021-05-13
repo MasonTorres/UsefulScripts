@@ -69,38 +69,126 @@ function Get-AppToken{
     return $token
 }
 
+# Function: Manage calls to Microsoft Graph
+# handles throttling and expired Access Tokens
+function Invoke-MSGraph{
+    Param
+    (
+         [Parameter(Mandatory=$true, Position=0)]
+         [hashtable] $Token,
+         [Parameter(Mandatory=$true)]
+         [string] $Uri,
+         [Parameter(Mandatory=$true)]
+         [string] $Method,
+         [Parameter(Mandatory=$false)]
+         [string] $Body
+    )
+
+    $ReturnValue = $null
+    $OneSuccessfulFetch = $null
+    $PermissionCheck = $false
+    $RetryCount = 0
+    $ResultNextLink = $Uri
+
+    while($null -ne $ResultNextLink){
+        Try {
+            if($Body){
+                $Result = Invoke-RestMethod -Method $Method -uri $ResultNextLink -ContentType "application/json" -Headers @{Authorization = "Bearer $($token.AccessToken)"} -Body $Body -ErrorAction Stop
+            }else{
+                $Result = Invoke-RestMethod -Method $Method -uri $ResultNextLink -ContentType "application/json" -Headers @{Authorization = "Bearer $($token.AccessToken)"} -ErrorAction Stop 
+            }
+            $ResultNextLink = $Result."@odata.nextLink"
+            $ReturnValue += $Result.value
+            $OneSuccessfulFetch = $true
+        } 
+        Catch [System.Net.WebException] {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+            Write-Output "HTTP Status Code: $statusCode"
+            Write-Output $_.Exception.Message
+            if($statusCode -eq 401 -and $OneSuccessfulFetch)
+            {
+                Write-Output "HTTP Status Code: 401 - Trying to get new Access Token"
+                # Token might have expired! Renew token and try again
+                $Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
+
+                $OneSuccessfulFetch = $false
+            }
+            elseif ($statusCode -eq 401 -and $PermissionCheck -eq $false) {
+                # In the case we are making multiple individual calls to Invoke-MSGraph we may need to check the access token has expired in between calls.
+                # i.e the check above never occurs if MS Graph returns only one page of results.
+                Write-Output "Retrying..."
+                $Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
+                $PermissionCheck = $true
+            }
+            elseif($statusCode -eq 429)
+            {
+                Write-Output "HTTP Status Code: 429 - Throttled! Waiting some seconds"
+
+                # throttled request, wait for a few seconds and retry
+                [int] $delay = [int](($_.Exception.Response.Headers | Where-Object Key -eq 'Retry-After').Value[0])
+                Write-Verbose -Message "Retry Caught, delaying $delay s"
+                Start-Sleep -s $delay
+            }
+            elseif($statusCode -eq 403 -or $statusCode -eq 400 -or $statusCode -eq 401)
+            {
+                Write-Output "Please check the permissions"
+                break;
+            }
+            else {
+                if ($RetryCount -lt 5) {
+                    Write-Output "Retrying..."
+                    $RetryCount++
+                }
+                else {
+                    Write-Output "Request failed. Please try again in the future."
+                    break
+                }
+            }
+        }
+        Catch {
+            $exType = $_.Exception.GetType().FullName
+            $exMsg = $_.Exception.Message
+    
+            Write-Output "Exception: $_.Exception"
+            Write-Output "Error Message: $exType"
+            Write-Output "Error Message: $exMsg"
+    
+            if ($RetryCount -lt 5) {
+                Write-Output "Retrying..."
+                $RetryCount++
+            }
+            else {
+                Write-Output "Request failed. Please try again in the future."
+                break
+            }
+        }
+    }
+
+    return $ReturnValue
+}
+
 # Function: Get all risky users using Microsoft Graph API
 function Get-RiskyUsers{
     Param
     (
          [Parameter(Mandatory=$true, Position=0)]
-         [string] $Token
+         [hashtable] $Token
     )
 
     $uri = "https://graph.microsoft.com/beta/identityProtection/riskyUsers"
     $method = "GET"
 
-    $Result = Invoke-RestMethod -Method $method -uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token"} -ErrorAction Stop
-
-    $RiskyUsers = $Result.value
-
-    # Loop over the pages to get all results
-    $ResultNextLink = $Result."@odata.nextLink"
-    while($ResultNextLink -ne $null){
-        $Result = (Invoke-RestMethod -Uri $ResultNextLink –Headers @{Authorization = "Bearer $token"} –Method Get -ErrorAction Stop) 
-        $ResultNextLink = $Result."@odata.nextLink"
-        $RiskyUsers += $Result.value
-    }
+    $RiskyUsers = Invoke-MSGraph -Token $Token -Uri $uri -Method $method 
 
     return $RiskyUsers
 }
 
 # Function: Dismiss risky users using Microsoft Graph API
-function Dismiss-RiskyUsers{
+function Invoke-DismissRiskyUsers{
     Param
     (
          [Parameter(Mandatory=$true, Position=0)]
-         [string] $Token,
+         [hashtable] $Token,
          [system.array] $UserIds
     )
 
@@ -113,7 +201,7 @@ function Dismiss-RiskyUsers{
         )
       } | convertTo-Json
 
-    $Result = Invoke-RestMethod -Method $method -uri $uri -ContentType "application/json" -Headers @{Authorization = "Bearer $token"} -body $body -ErrorAction Stop
+    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -body $body
 
     return $Result
 }
@@ -122,7 +210,7 @@ function Dismiss-RiskyUsers{
 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
 
 # Get all risky users from Microsoft Graph API
-$AllRiskyUsers = Get-RiskyUsers -Token $vars.Token.AccessToken
+$AllRiskyUsers = Get-RiskyUsers -Token $vars.Token
 
 # Create a list of risky users whose riskState is not 'dismissed'
 $riskyUsersToDissmis = @()
@@ -133,4 +221,4 @@ foreach($riskyUser in $AllRiskyUsers){
 }
 
 # Dismiss risky users
-Dismiss-RiskyUsers -Token $vars.Token.AccessToken -UserIds $riskyUsersToDissmis
+Invoke-DismissRiskyUsers -Token $vars.Token -UserIds $riskyUsersToDissmis
