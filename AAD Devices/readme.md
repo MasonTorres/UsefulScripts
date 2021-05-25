@@ -17,7 +17,7 @@ This script does the following.
 
 ### Example
 
-```json
+```javascript
 {
   "DuplicateDevice45": {
     "d47092b1-2891-4ef7-acc2-5c6f5f683a36": {
