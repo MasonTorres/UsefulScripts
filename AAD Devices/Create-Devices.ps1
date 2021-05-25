@@ -8,11 +8,10 @@
 #                 information or other pecuniary loss even if it has been advised of the possibility of
 #                 such damages. Read all the implementation and usage notes thoroughly.
 
-# Reference: https://docs.microsoft.com/en-us/graph/api/riskyuser-dismiss?view=graph-rest-1.0
 # Create an App Registration 
-# Assign Application permiossions: IdentityRiskyUser.ReadWrite.All
+# Assign Application permissions: Device.ReadWrite.All https://docs.microsoft.com/en-us/graph/api/device-post-devices?view=graph-rest-1.0&tabs=http
 # Create Application secret
-# Update $vars variable below: Client Secret, ClientID and TenantID
+# Update $vars variable below: Client Secret, ClientID and TenantID 
 
 # This script will dismiss all risky users.
 
