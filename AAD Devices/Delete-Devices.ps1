@@ -357,6 +357,7 @@ foreach($device in $devicesToCheck.GetEnumerator()){
 
 # Export the hashtable as a JSON object
 $jsonOutput =  $devicesToCheck | ConvertTo-Json
+$jsonOutput | Out-File DuplicateDevices.json
 
 # Export the hashtable as a CSV file
 $CsvOutput = @()
