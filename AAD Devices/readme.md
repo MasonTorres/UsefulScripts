@@ -15,7 +15,7 @@ This script does the following.
 6. Loops through all unique devices and deletes all devices except for the one device marked **Do Not Delete**
     - Calls Microsoft Graph API in batches to speed up deletion of objects. 20 devices at a time will be deleted.
 
-### Example
+### Example JSON output of device to be deleted
 
 ```javascript
 {
