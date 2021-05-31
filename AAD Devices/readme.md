@@ -8,10 +8,10 @@ This sciprt will create a lot of device object in Azure AD. 1 every 2 seconds.
 
 This script does the following.
 1. Get all devices from Azure AD
-  -Creates a hashtable containing all **unique** device names. 
-      - Each Unique device will contain one or more child obejct. These child objects represent each device with the same name.
-  -Loops through each unique device.
-      - Finds the child device with the most recent creation date and sets **DeviceStatus** to **Do Not Delete**
+   - Creates a hashtable containing all **unique** device names. 
+     - Each Unique device will contain one or more child obejct. These child objects represent each device with the same name.
+   - Loops through each unique device.
+     - Finds the child device with the most recent creation date and sets **DeviceStatus** to **Do Not Delete**
 2. Optional code to export the hashtable of devices as a csv file.
 3. Optional code to export the hashtbale of devices as a json file.
 4. Imports CSV file. Using the template exported from option 2 - amend the CSV and import
