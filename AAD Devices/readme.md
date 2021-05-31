@@ -16,7 +16,7 @@ This script does the following.
 3. Optional code to export the hashtbale of devices as a json file.
 4. Imports CSV file. Using the template exported from option 2 - amend the CSV and import
 5. Imports JSON file. Using the template exported from option 3 - amend the JSON and import
-6. Loops through all unique devices and deletes all devices except for the one device marked **Do Not Delete**
+6. Loops through all unique devices from step 1, 4 or 5 and deletes all devices except for the one device marked **Do Not Delete**
     - Calls Microsoft Graph API in batches to speed up deletion of objects. 20 devices at a time will be deleted.
     - **This cannot be undone** use at own risk
 
