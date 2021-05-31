@@ -18,6 +18,7 @@ This script does the following.
 5. Imports JSON file. Using the template exported from option 3 - amend the JSON and import
 6. Loops through all unique devices and deletes all devices except for the one device marked **Do Not Delete**
     - Calls Microsoft Graph API in batches to speed up deletion of objects. 20 devices at a time will be deleted.
+    - **This cannot be undone** use at own risk
 
 ### Example JSON output of device to be deleted
 
