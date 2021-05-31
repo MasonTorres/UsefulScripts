@@ -301,7 +301,7 @@ Function Get-RandomAlphanumericString {
 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
 
 
-for($y = 0; $y -lt 50; $y++){
+for($y = 0; $y -lt 500; $y++){
     for($x =1; $x -lt 15; $x++){
 
         #refresh token after 45mins time has elapsed

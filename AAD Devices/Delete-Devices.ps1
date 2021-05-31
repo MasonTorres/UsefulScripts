@@ -26,12 +26,14 @@ $vars = @{
         TenantID = ""
         AccessToken = ""
     }
-    DelegateToken = @{
-
-    }
-    
+    DelegateToken = @{}
     ScriptStartTime = Get-Date
+
+    AllDevices = @{}
+    DevicesToCheck = @{}
 }
+
+Add-Type -AssemblyName System.Web
 
 # Function: Create Access Token for Microsoft Graph API
 function Get-AppToken{
@@ -73,6 +75,7 @@ function Get-AppToken{
     return $token
 }
 
+# Function: Create Access Token with delegated permissions using device code flow
 function Get-DelegateToken{
     Param
     (
@@ -86,63 +89,75 @@ function Get-DelegateToken{
         [string] $refreshToken
     )
     
-    # Original source from https://joymalya.com/powershell-ms-graph-api-part-1/
-    #Define Client Variables Here
-    #############################
+    # Original source from https://blog.simonw.se/getting-an-access-token-for-azuread-using-powershell-and-device-login-flow/
     $resource = "https://graph.microsoft.com"
-    $scope = "https://graph.microsoft.com/Directory.AccessAsUser.All"
+    $Timeout = 300
+    $scope =  "https://graph.microsoft.com/.Default"
     $redirectUri = "https://localhost"
-    
-    #UrlEncode variables for special characters
-    ###########################################
-    Add-Type -AssemblyName System.Web
+
     $clientSecretEncoded = [System.Web.HttpUtility]::UrlEncode($clientSecret)
     $redirectUriEncoded =  [System.Web.HttpUtility]::UrlEncode($redirectUri)
     $resourceEncoded = [System.Web.HttpUtility]::UrlEncode($resource)
     $scopeEncoded = [System.Web.HttpUtility]::UrlEncode($scope)
-    
+
+
     if( $null -eq $refreshToken -or $refreshToken.length -eq 0){
-        #Obtain Authorization Code
-        ##########################
-        Add-Type -AssemblyName System.Windows.Forms
-        $form = New-Object -TypeName System.Windows.Forms.Form -Property @{Width=440;Height=640}
-        $web  = New-Object -TypeName System.Windows.Forms.WebBrowser -Property @{Width=420;Height=600;Url=($url -f ($Scope -join "%20")) }
-        $url = "https://login.microsoftonline.com/common/oauth2/authorize?response_type=code&redirect_uri=$redirectUriEncoded&client_id=$clientID&resource=$resourceEncoded"
-        $DocComp  = {
-                $Global:uri = $web.Url.AbsoluteUri        
-                if ($Global:uri -match "error=[^&]*|code=[^&]*") {$form.Close() }
+
+        $DeviceCodeRequestParams = @{
+            Method = 'POST'
+            Uri    = "https://login.microsoftonline.com/$TenantID/oauth2/devicecode"
+            Body   = @{
+                client_id = $ClientId
+                resource  = $Resource
             }
-        $web.ScriptErrorsSuppressed = $true
-        $web.Add_DocumentCompleted($DocComp)
-        $form.Controls.Add($web)
-        $form.Add_Shown({$form.Activate()})
-        $form.ShowDialog() | Out-Null
-        $queryOutput = [System.Web.HttpUtility]::ParseQueryString($web.Url.Query)
-        $output = @{}
-        foreach($key in $queryOutput.Keys){
-            $output["$key"] = $queryOutput[$key]
         }
-        $regex = '(?<=code=)(.*)(?=&)'
-        $authCode  = ($uri | Select-string -pattern $regex).Matches[0].Value
 
-        #Get Access Token with obtained Auth Code
-        #########################################
-        $body = "grant_type=authorization_code&redirect_uri=$redirectUri&client_id=$clientId&client_secret=$clientSecretEncoded&code=$authCode&resource=$resource&scope=$scopeEncoded"
-        $authUri = "https://login.microsoftonline.com/common/oauth2/token"
-        $tokenResponse = Invoke-RestMethod -Uri $authUri -Method Post -Body $body -ErrorAction STOP
+        $DeviceCodeRequest = Invoke-RestMethod @DeviceCodeRequestParams
+        Write-Host $DeviceCodeRequest.message -ForegroundColor Yellow
 
-        $refreshToken = $null
+        $TokenRequestParams = @{
+            Method = 'POST'
+            Uri    = "https://login.microsoftonline.com/$TenantId/oauth2/token"
+            Body   = @{
+                grant_type = "urn:ietf:params:oauth:grant-type:device_code"
+                code       = $DeviceCodeRequest.device_code
+                client_id  = $ClientId
+            }
+        }
+
+        $TimeoutTimer = [System.Diagnostics.Stopwatch]::StartNew()
+        while ([string]::IsNullOrEmpty($TokenRequest.access_token)) {
+            if ($TimeoutTimer.Elapsed.TotalSeconds -gt $Timeout) {
+                throw 'Login timed out, please try again.'
+            }
+            $TokenRequest = try {
+                Invoke-RestMethod @TokenRequestParams -ErrorAction Stop
+            }
+            catch {
+                $Message = $_.ErrorDetails.Message | ConvertFrom-Json
+                if ($Message.error -ne "authorization_pending") {
+                    throw
+                }
+            }
+            Start-Sleep -Seconds 1
+        }
+
+        $tokenResponse = $TokenRequest
+
     }else{
 
-        #Get Access Token with obtained Auth Code
-        #########################################
-        $body = "grant_type=refresh_token&redirect_uri=$redirectUri&client_id=$clientId&client_secret=$clientSecretEncoded&refresh_token=$refreshToken&resource=$resource&scope=$scopeEncoded"
-        $authUri = "https://login.microsoftonline.com/common/oauth2/token"
-        $tokenResponse = Invoke-RestMethod -Uri $authUri -Method Post -Body $body -ErrorAction STOP
-
+        #Use RefreshToken to acquire a new Access Token
+        try{
+            $body = "grant_type=refresh_token&redirect_uri=$redirectUriEncoded&client_id=$clientId&client_secret=$clientSecretEncoded&refresh_token=$refreshToken&resource=$resourceEncoded&scope=$scopeEncoded"
+            $authUri = "https://login.microsoftonline.com/common/oauth2/token"
+            $tokenResponse = Invoke-RestMethod -Uri $authUri -Method Post -Body $body -ErrorAction STOP
+        }catch{
+            $e = $_
+            Write-Output "Error refreshing token. Acquire a new token"
+            throw
+        }
         $refreshToken = $null
     }
-    
     
     return @{
         "AccessToken" = $tokenResponse.access_token
@@ -192,7 +207,15 @@ function Invoke-MSGraph{
             {
                 Write-Output "HTTP Status Code: 401 - Trying to get new Access Token"
                 # Token might have expired! Renew token and try again
-                $Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
+                ##$Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
+                try{
+                    $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+                    $vars.ScriptStartTime = Get-Date
+                    
+                }catch{
+                    $e = $_
+                    $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                }
 
                 $OneSuccessfulFetch = $false
             }
@@ -200,7 +223,16 @@ function Invoke-MSGraph{
                 # In the case we are making multiple individual calls to Invoke-MSGraph we may need to check the access token has expired in between calls.
                 # i.e the check above never occurs if MS Graph returns only one page of results.
                 Write-Output "Retrying..."
-                $Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
+                ##$Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
+                try{
+                    $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+                    $vars.ScriptStartTime = Get-Date
+                    
+                }catch{
+                    $e = $_
+                    $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                }
+                
                 $PermissionCheck = $true
             }
             elseif($statusCode -eq 429)
@@ -302,130 +334,461 @@ function Invoke-DeleteDevicesBatch{
     return $Result
 }
 
-# Get our Access Token for Microsoft Graph API
-$vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+function Invoke-CheckVariables{
+    Clear-Host
 
-# Get all risky users from Microsoft Graph API
-$AllDevices = Get-Devices -Token $vars.Token
-
-# Create a Hashtable with unique device names, then add any duplicate devices as child objects.
-$devicesToCheck = @{}
-foreach($device in $AllDevices){
-    if($devicesToCheck[$device.displayName]){
-        $devicesToCheck[$device.displayName] +=  @{
-            $device.id = @{
-                deviceId = $device.deviceId
-                objectId = $device.id
-                registrationDateTime = $device.registrationDateTime
-                createdDateTime = $device.createdDateTime
-                displayName = $device.displayName
-                deleteStatus = ""
-            }
-        }
-    }else{
-        $devicesToCheck.add($device.displayName, @{
-            $device.id = @{
-                deviceId = $device.deviceId
-                objectId = $device.id
-                registrationDateTime = $device.registrationDateTime
-                createdDateTime = $device.createdDateTime
-                displayName = $device.displayName
-                deleteStatus = ""
-            }
-        })
-    }
-}
-
-# Loop through each unique device name, check the child devices and mark the most recently 
-# created device as "Do Not Delete"
-foreach($device in $devicesToCheck.GetEnumerator()){
-
-    $latestActivity = get-date "1970-1-1"
-        $latestActivityID = $null
-    foreach($selectedDevice in $device.value.GetEnumerator()){
-
-        foreach($duplicateDevice in $selectedDevice.value){
-            if($duplicateDevice.createdDateTime -gt $latestActivity){
-                $latestActivity = $duplicateDevice.createdDateTime
-                $latestActivityID = $duplicateDevice.objectId
-            }
+    while([string]::IsNullOrEmpty($vars.token.ClientSecret) -or [string]::IsNullOrEmpty($vars.token.ClientID) -or [string]::IsNullOrEmpty($vars.token.TenantID)){
+        Write-Host "Client ID, Secret or Tenant ID is missing. Please enter:"
+        while([string]::IsNullOrEmpty($vars.token.ClientID)){
+            $vars.token.ClientID = Read-Host -Prompt "Enter Client ID"
         }
 
-    }
-    $devicesToCheck[$device.name][$latestActivityID].deleteStatus = "Do Not Delete"
-}
+        while([string]::IsNullOrEmpty($vars.token.ClientSecret)){
+            $vars.token.ClientSecret = Read-Host -Prompt "Enter Client Secret"
+        }
 
-# Export the hashtable as a JSON object
-$jsonOutput =  $devicesToCheck | ConvertTo-Json
-$jsonOutput | Out-File DuplicateDevices.json
-
-# Export the hashtable as a CSV file
-$CsvOutput = @()
-foreach($device in $devicesToCheck.GetEnumerator()){
-    
-    foreach($deviceRegistration in $device.value){
-
-        foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
-            $details = [ordered]@{}
-            $details.add("Computer", $device.Name)
-            $details.add("DeleteStatus", $identifiedDevice.value.deleteStatus)
-            $details.add("CreatedDateTime", $identifiedDevice.value.createdDateTime)
-            $details.add("ObjectID", $identifiedDevice.value.objectId)
-            $details.add("DeviceID", $identifiedDevice.value.deviceId)
-
-            $CsvOutput+= New-Object PSObject -Property $details
+        while([string]::IsNullOrEmpty($vars.token.TenantID)){
+            $vars.token.TenantID = Read-Host -Prompt "Enter Tenant ID"
         }
     }
+
+    try{
+        $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+        $vars.ScriptStartTime = Get-Date
+        
+    }catch{
+        $e = $_
+        $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+    }
+
+    Clear-Host
 }
 
-$CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
+Function Step1{
+    # Get our Access Token for Microsoft Graph API
+    #$vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+    try{
+        $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+        $vars.ScriptStartTime = Get-Date
+        
+    }catch{
+        $e = $_
+        $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+    }
 
-# Create batch requests and delete devices
-foreach($device in $devicesToCheck.GetEnumerator()){
-    
-    # Create an array of batches
-    # Each batch contains up to 20 Microsoft Graph API requests https://docs.microsoft.com/en-us/graph/json-batching
-    [System.Collections.ArrayList]$batchRequestItemsArray = @()
-    foreach($deviceRegistration in $device.value){
-        $batchRequestItems = @()
-        $count = 1
-        foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
-            if($identifiedDevice.Value.deleteStatus -ne "Do Not Delete" -and $count -le 20){
-                $details = [ordered]@{}
-                $details.add("id", $count)
-                $details.add("method", "DELETE")
-                $details.add("url", "/devices/$($identifiedDevice.Value.objectId)")
+    # Get all risky users from Microsoft Graph API
+    $vars.AllDevices = Get-Devices -Token $vars.DelegateToken
 
-                $batchRequestItems += New-Object PSObject -Property $details
-                $count++
-            }
+    # Create a Hashtable with unique device names, then add any duplicate devices as child objects.
+    $vars.DevicesToCheck = @{}
+    foreach($device in $vars.AllDevices){
+        
+        if($vars.DevicesToCheck[$device.displayName]){
             
-            if($count -eq 21 -and $identifiedDevice.Value.deleteStatus -ne "Do Not Delete"){
-                $null = $batchRequestItemsArray.add($batchRequestItems)
-                #$batchRequest.requests += $batchRequestItems
-                $count = 1
-                $batchRequestItems = @()
-            }elseif( $batchRequestItemsArray.count * 20 + $count -eq $deviceRegistration.count){
-                $null = $batchRequestItemsArray.add($batchRequestItems)
-                $count = 1
+            $vars.DevicesToCheck[$device.displayName] +=  @{
+                $device.id = @{
+                    deviceId = $device.deviceId
+                    objectId = $device.id
+                    registrationDateTime = $device.registrationDateTime
+                    createdDateTime = $device.createdDateTime
+                    displayName = $device.displayName
+                    deleteStatus = ""
+                }
             }
+        }else{
+            $vars.DevicesToCheck.add($device.displayName, @{
+                $device.id = @{
+                    deviceId = $device.deviceId
+                    objectId = $device.id
+                    registrationDateTime = $device.registrationDateTime
+                    createdDateTime = $device.createdDateTime
+                    displayName = $device.displayName
+                    deleteStatus = ""
+                }
+            })
         }
     }
 
-    # Loop through all the batches and execute batch request
-    foreach($batch in $batchRequestItemsArray){
-        if($batch.count -gt 0){
-            #refresh token after 45mins time has elapsed
-            if(( Get-Date $vars.ScriptStartTime).AddMinutes(45) -lt (Get-Date)){
-                Write-Output "Refreshing tokens" 
+    # Loop through each unique device name, check the child devices and mark the most recently 
+    # created device as "Do Not Delete"
+    foreach($device in $vars.DevicesToCheck.GetEnumerator()){
 
-                $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
-                $vars.ScriptStartTime = Get-Date
+        $latestActivity = get-date "1970-1-1"
+            $latestActivityID = $null
+        foreach($selectedDevice in $device.value.GetEnumerator()){
+
+            foreach($duplicateDevice in $selectedDevice.value){
+                if($duplicateDevice.createdDateTime -gt $latestActivity){
+                    $latestActivity = $duplicateDevice.createdDateTime
+                    $latestActivityID = $duplicateDevice.objectId
+                }
             }
 
-            # Execute batch job and delete devices
-            $batchRequest = @{"requests" = $batch}
-            Invoke-DeleteDevicesBatch -Token $vars.DelegateToken -batchRequest $batchRequest
+        }
+        $vars.DevicesToCheck[$device.name][$latestActivityID].deleteStatus = "Do Not Delete"
+    }
+
+    ''
+    Write-Host "Number of Devices: $($vars.AllDevices.count)" -ForegroundColor Magenta
+    Write-Host "Number of Unique devices by name: $($vars.DevicesToCheck.count)" -ForegroundColor Magenta
+    ''
+}
+
+Function Step2{
+    if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        Write-Host "No devices found. Please run option 1" -ForegroundColor Yellow
+    }else{
+        # Export the hashtable as a CSV file
+        $CsvOutput = @()
+        foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+            
+            foreach($deviceRegistration in $device.value){
+
+                foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
+                    $details = [ordered]@{}
+                    $details.add("Computer", $device.Name)
+                    $details.add("DeleteStatus", $identifiedDevice.value.deleteStatus)
+                    $details.add("CreatedDateTime", $identifiedDevice.value.createdDateTime)
+                    $details.add("ObjectID", $identifiedDevice.value.objectId)
+                    $details.add("DeviceID", $identifiedDevice.value.deviceId)
+
+                    $CsvOutput+= New-Object PSObject -Property $details
+                }
+            }
+        }
+        $CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
+    }
+}
+
+Function Step3{
+    if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        Write-Host "No devices found. Please run option 1" -ForegroundColor Yellow
+    }else{
+        # Export the hashtable as a JSON object
+        $jsonOutput =  $vars.DevicesToCheck | ConvertTo-Json
+        $jsonOutput | Out-File DuplicateDevices.json
+    }
+}
+
+Function Step4{
+    ''
+    $pathToCsv = Read-Host "Enter path to CSV"
+    ''
+    while($(Test-Path -Path $pathToCsv -PathType Leaf) -eq $false){
+        ''
+        $pathToCsv = Read-Host "Path not valid. Please enter path to CSV"
+        ''
+    }
+    
+    Clear-Host
+
+    $csvImport = Import-CSV $pathToCsv
+
+    $row = 1
+    $vars.DevicesToCheck = @{}
+    foreach($device in $csvImport){
+
+        $row++
+        if([string]::IsNullOrEmpty($device.Computer) -or [string]::IsNullOrEmpty($device.CreatedDateTime) -or [string]::IsNullOrEmpty($device.ObjectID) -or [string]::IsNullOrEmpty($device.DeviceID)){
+            Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
+            if([string]::IsNullOrEmpty($device.Computer)){
+                Write-Host "Computer is empty"
+            }
+
+            if([string]::IsNullOrEmpty($device.CreatedDateTime)){
+                Write-Host "CreatedDateTime is empty"
+            }
+
+            if([string]::IsNullOrEmpty($device.ObjectID)){
+                Write-Host "ObjectID is empty"
+            }
+
+            if([string]::IsNullOrEmpty($device.DeviceID)){
+                Write-Host "DeviceID is empty"
+            }
+            ''
+        }else{
+            if($vars.DevicesToCheck[$device.Computer]){
+            
+                $vars.DevicesToCheck[$device.Computer] +=  @{
+                    $device.ObjectID = @{
+                        deviceId = $device.deviceId
+                        objectId = $device.ObjectID
+                        registrationDateTime = $device.registrationDateTime
+                        createdDateTime = $device.createdDateTime
+                        displayName = $device.displayName
+                        deleteStatus = $device.DeleteStatus
+                    }
+                }
+            }else{
+                $vars.DevicesToCheck.add($device.Computer, @{
+                    $device.ObjectID = @{
+                        deviceId = $device.deviceId
+                        objectId = $device.ObjectID
+                        registrationDateTime = $device.registrationDateTime
+                        createdDateTime = $device.createdDateTime
+                        displayName = $device.Computer
+                        deleteStatus = $device.DeleteStatus
+                    }
+                })
+            }
         }
     }
 }
+
+Function Step5{
+    ''
+    $pathToCsv = Read-Host "Enter path to CSV"
+    ''
+    while($(Test-Path -Path $pathToCsv -PathType Leaf) -eq $false){
+        ''
+        $pathToCsv = Read-Host "Path not valid. Please enter path to CSV"
+        ''
+    }
+    
+    Clear-Host
+
+    $jsonImport = Get-Content $pathToCsv | ConvertFrom-Json 
+
+    $vars.DevicesToCheck = @{}
+    foreach($deviceFromJson in $jsonImport.PSObject.Properties){
+
+        $device = @{
+            $deviceFromJson.Name = @{}
+        }
+
+        foreach($dupDevice in $deviceFromJson.value.psobject.Properties.value){
+
+            if( [string]::IsNullOrEmpty($dupDevice.displayName) -or 
+                [string]::IsNullOrEmpty($dupDevice.createdDateTime) -or 
+                [string]::IsNullOrEmpty($dupDevice.objectId) -or 
+                [string]::IsNullOrEmpty($dupDevice.deviceId))
+            {
+                Write-Host "Error on json value." -ForegroundColor Red
+                if([string]::IsNullOrEmpty($dupDevice.displayName)){
+                    Write-Host "$($dupDevice.objectId): Computer is empty"
+                }
+    
+                if([string]::IsNullOrEmpty($dupDevice.createdDateTime)){
+                    Write-Host "$($dupDevice.displayName): CreatedDateTime is empty"
+                }
+    
+                if([string]::IsNullOrEmpty($dupDevice.objectId)){
+                    Write-Host "$($dupDevice.displayName): ObjectID is empty"
+                }
+    
+                if([string]::IsNullOrEmpty($dupDevice.deviceId)){
+                    Write-Host "$($dupDevice.displayName): DeviceID is empty"
+                }
+                ''
+            }else{
+
+                if($device[$deviceFromJson.Name]){
+                    $device.($deviceFromJson.Name) += @{
+                        $dupDevice.objectId = @{
+                        displayName = $dupDevice.displayName
+                        objectId = $dupDevice.objectId
+                        createdDateTime = $dupDevice.createdDateTime
+                        registrationDateTime = $dupDevice.registrationDateTime
+                        deviceId = $dupDevice.deviceId
+                        deleteStatus = $dupDevice.deleteStatus
+                    }
+                }
+                }else{
+                    $device.add($deviceFromJson.Name, @{
+                            $dupDevice.objectId = @{
+                            displayName = $dupDevice.displayName
+                            objectId = $dupDevice.objectId
+                            createdDateTime = $dupDevice.createdDateTime
+                            registrationDateTime = $dupDevice.registrationDateTime
+                            deviceId = $dupDevice.deviceId
+                            deleteStatus = $dupDevice.deleteStatus
+                        }
+                    })
+                }
+            }
+        }
+
+        $vars.DevicesToCheck += $device
+    }
+}
+
+Function Step6{
+
+    $numDevicesToDelete = 0
+    $numDevicesNotToDelete = 0
+    foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+        foreach($deviceDuplicate in $device.value){
+            foreach($identifiedDevice in $deviceDuplicate.GetEnumerator()){
+                if($identifiedDevice.value.deleteStatus -ne "Do Not Delete"){
+                    $numDevicesToDelete++
+                }else{
+                    $numDevicesNotToDelete++
+                }
+            }
+        }
+    }
+
+    ''
+    Write-Host "This action will delete $numDevicesToDelete devices and ignore $numDevicesNotToDelete devices" -ForegroundColor Red
+    Write-Host "This action can NOT be undone!" -ForegroundColor Red
+    ''
+    $ProceedToDeleteDevices = Read-Host -Prompt "Are you sure you want to delete $numDevicesToDelete devices? (Y/N)"
+    ''
+
+    if($ProceedToDeleteDevices -eq "Y"){
+        $numDevicesDeleted = 0
+
+        # Create batch requests and delete devices
+        foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+            # Create an array of batches
+            # Each batch contains up to 20 Microsoft Graph API requests https://docs.microsoft.com/en-us/graph/json-batching
+            [System.Collections.ArrayList]$batchRequestItemsArray = @()
+            foreach($deviceRegistration in $device.value){
+                $batchRequestItems = @()
+                $count = 1
+                foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
+                    if($identifiedDevice.Value.deleteStatus -ne "Do Not Delete" -and $count -le 20){
+                        $details = [ordered]@{}
+                        $details.add("id", $count)
+                        $details.add("method", "DELETE")
+                        $details.add("url", "/devices/$($identifiedDevice.Value.objectId)")
+
+                        $batchRequestItems += New-Object PSObject -Property $details
+                        $count++
+                        $numDevicesDeleted++
+                    }
+                    
+                    if($count -eq 21 -and $identifiedDevice.Value.deleteStatus -ne "Do Not Delete"){
+                        #Add batch of 20 to array of batches
+                        $null = $batchRequestItemsArray.add($batchRequestItems)
+                        #$batchRequest.requests += $batchRequestItems
+                        $count = 1
+                        $batchRequestItems = @()
+                    }elseif( $batchRequestItemsArray.count * 20 + $count-1 -eq $deviceRegistration.count){
+                        #add last batch to array of batches. May be less thab 20 in the batch
+                        $null = $batchRequestItemsArray.add($batchRequestItems)
+                        $count = 1
+                    }
+
+                    Write-Host "`rDeleting devices $numDevicesDeleted / $numDevicesToDelete" -NoNewline
+                }
+            }
+
+
+
+            # Loop through all the batches and execute batch request
+            foreach($batch in $batchRequestItemsArray){
+                if($batch.count -gt 0){
+                    #refresh token after 45mins time has elapsed
+                    if(( Get-Date $vars.ScriptStartTime).AddMinutes(45) -lt (Get-Date)){
+                        Write-Output "Refreshing tokens" 
+
+                        try{
+                            $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+                            $vars.ScriptStartTime = Get-Date
+                            
+                        }catch{
+                            $e = $_
+                            $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                        }
+                    }
+
+                    # Execute batch job and delete devices
+                    $batchRequest = @{"requests" = $batch}
+                    $deleteResult = Invoke-DeleteDevicesBatch -Token $vars.DelegateToken -batchRequest $batchRequest
+                    
+                }
+            }
+        }
+    }
+}
+
+Function menu{
+    
+    '========================================================'
+    Write-Host '        Device Deletion Tool          ' -ForegroundColor Green 
+    '========================================================'
+    ''
+    Write-Host "Please provice any feedback, comment or suggestion" -ForegroundColor Yellow
+    ''
+    Write-Host "Enter (1) to get all Azure AD devices" -ForegroundColor Green
+    ''
+    Write-Host "Enter (2) to save output as csv" -ForegroundColor Green
+    ''
+    Write-Host "Enter (3) to save output as json" -ForegroundColor Green
+    ''
+    Write-Host "Enter (4) to import devices from csv file" -ForegroundColor Green
+    ''
+    Write-Host "Enter (5) to import devices from json file" -ForegroundColor Green
+    ''
+    Write-Host "Enter (6) to delete devices" -ForegroundColor Green
+    ''
+    Write-Host "Enter (9) to Quit" -ForegroundColor Green
+    ''
+
+    $Num =''
+    $Num = Read-Host -Prompt "Please make a selection, and press Enter" 
+
+    While(($Num -ne '1') -AND ($Num -ne '2') -AND ($Num -ne '3') -AND ($Num -ne '4') -AND ($Num -ne '5') -AND ($Num -ne '6') -AND ($Num -ne '7') -AND ($Num -ne '9')){
+
+        $Num = Read-Host -Prompt "Invalid input. Please make a correct selection from the above options, and press Enter" 
+        
+    }
+    RunSelection -Num $Num
+}
+
+function RunSelection{
+    Param
+    (
+        [Parameter(Mandatory=$true, Position=0)]
+        [int] $Num
+    )
+
+    if($Num -eq '1'){
+        ''
+        Write-Host "Get all Azure AD devices option has been chosen" -BackgroundColor Black
+        ''
+        Invoke-CheckVariables
+        Step1
+    }elseif($Num -eq '2'){
+        ''
+        Write-Host "Save output as csv option has been chosen" -BackgroundColor Black
+        ''
+        
+        Step2
+    }elseif($Num -eq '3'){
+        ''
+        Write-Host "Save output as json option has been chosen" -BackgroundColor Black
+        ''
+
+       Step3
+    }elseif($Num -eq '4'){
+        ''
+        Write-Host "Import device from csv file option has been chosen" -BackgroundColor Black
+        ''
+        Step4
+    }elseif($Num -eq '5'){
+        ''
+        Write-Host "Import device from json file option has been chosen" -BackgroundColor Black
+        ''
+        Step5
+    }elseif($Num -eq '6'){
+        ''
+        Write-Host "Delete devices option has been chosen" -BackgroundColor Black
+        ''
+        Invoke-CheckVariables
+        Step6
+    }elseif($Num -eq '9'){
+        break
+    }
+
+    ''
+    $null = Read-Host 'Press Any Key or Enter to return to the menu'
+    ''
+    cls
+    menu
+}
+
+cls
+menu
