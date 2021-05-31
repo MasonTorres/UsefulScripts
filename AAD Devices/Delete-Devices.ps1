@@ -10,20 +10,32 @@
 
 # 
 # Create an App Registration 
-# Assign Application permissions: Directory.Read.All, Directory.ReadWrite.All, Directory.AccessAsUser.All https://docs.microsoft.com/en-us/graph/api/device-list?view=graph-rest-1.0&tabs=http
 # Assign Delegate permissions: 	Directory.AccessAsUser.All https://docs.microsoft.com/en-us/graph/api/device-delete?view=graph-rest-1.0&tabs=http
 # Create Application secret
-# Update $vars variable below: Client Secret, ClientID and TenantID 
+# Update $vars variable below: ClientSecret, ClientID and TenantID 
 
-# This script will dismiss all risky users.
+# This script will delete devices from Azure AD.
+# App ClientSecret, ClientID and TenantID are needed for delegate token refresh
+
+# Kudos to https://blog.simonw.se/getting-an-access-token-for-azuread-using-powershell-and-device-login-flow/
+# Kudos to https://github.com/Azure-Samples/DSRegTool
+
+param (
+    [Parameter( ValueFromPipeline=$true,
+                ValueFromPipelineByPropertyName=$true,
+                HelpMessage="Delete Azure AD devices")]
+    [string]$ClientID = "",
+    [string]$ClientSecret = "",
+    [string]$TenantID = ""
+)
 
 # Variable: Store variables used throughout this script
 $vars = @{
     # Used to generate an Access Token to query Microsoft Graph API.
     Token = @{
-        ClientSecret = ""
-        ClientID = ""
-        TenantID = ""
+        ClientSecret = $ClientSecret
+        ClientID = $ClientID
+        TenantID = $TenantID
         AccessToken = ""
     }
     DelegateToken = @{}
@@ -335,8 +347,6 @@ function Invoke-DeleteDevicesBatch{
 }
 
 function Invoke-CheckVariables{
-    Clear-Host
-
     while([string]::IsNullOrEmpty($vars.token.ClientSecret) -or [string]::IsNullOrEmpty($vars.token.ClientID) -or [string]::IsNullOrEmpty($vars.token.TenantID)){
         Write-Host "Client ID, Secret or Tenant ID is missing. Please enter:"
         while([string]::IsNullOrEmpty($vars.token.ClientID)){
@@ -375,6 +385,9 @@ Function Step1{
         $e = $_
         $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
     }
+
+    ''
+    Write-Host "Getting devices..."
 
     # Get all risky users from Microsoft Graph API
     $vars.AllDevices = Get-Devices -Token $vars.DelegateToken
@@ -710,7 +723,7 @@ Function menu{
     Write-Host '        Device Deletion Tool          ' -ForegroundColor Green 
     '========================================================'
     ''
-    Write-Host "Please provice any feedback, comment or suggestion" -ForegroundColor Yellow
+    Write-Host "Please provide any feedback, comment or suggestion" -ForegroundColor Yellow
     ''
     Write-Host "Enter (1) to get all Azure AD devices" -ForegroundColor Green
     ''
@@ -746,34 +759,43 @@ function RunSelection{
     )
 
     if($Num -eq '1'){
+        Clear-Host
+
         ''
         Write-Host "Get all Azure AD devices option has been chosen" -BackgroundColor Black
         ''
         Invoke-CheckVariables
         Step1
     }elseif($Num -eq '2'){
+        Clear-Host
+
         ''
         Write-Host "Save output as csv option has been chosen" -BackgroundColor Black
         ''
-        
         Step2
     }elseif($Num -eq '3'){
+        Clear-Host
+
         ''
         Write-Host "Save output as json option has been chosen" -BackgroundColor Black
         ''
-
-       Step3
+        Step3
     }elseif($Num -eq '4'){
+        Clear-Host
+
         ''
         Write-Host "Import device from csv file option has been chosen" -BackgroundColor Black
         ''
         Step4
     }elseif($Num -eq '5'){
+        Clear-Host
+
         ''
         Write-Host "Import device from json file option has been chosen" -BackgroundColor Black
         ''
         Step5
     }elseif($Num -eq '6'){
+        Clear-Host
         ''
         Write-Host "Delete devices option has been chosen" -BackgroundColor Black
         ''
