@@ -198,6 +198,7 @@ function Invoke-MSGraph{
     $PermissionCheck = $false
     $RetryCount = 0
     $ResultNextLink = $Uri
+    $batchCount = 0
 
     while($null -ne $ResultNextLink){
         Try {
@@ -209,6 +210,8 @@ function Invoke-MSGraph{
             $ResultNextLink = $Result."@odata.nextLink"
             $ReturnValue += $Result.value
             $OneSuccessfulFetch = $true
+            $batchCount++
+            Write-Host -NoNewline "`rRecevied pages from Microsoft Graph API $batchCount"
         } 
         Catch [System.Net.WebException] {
             $x = $_
@@ -484,15 +487,18 @@ Function Step3{
 }
 
 Function Step4{
-    ''
-    $pathToCsv = Read-Host "Enter path to CSV"
-    ''
-    while($(Test-Path -Path $pathToCsv -PathType Leaf) -eq $false){
-        ''
-        $pathToCsv = Read-Host "Path not valid. Please enter path to CSV"
-        ''
-    }
     
+    Write-Host "Select CSV file from Windows Explorer"
+
+    #Get file from Windows Explorer
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
+    
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    # $OpenFileDialog.initialDirectory = $initialDirectory
+    $OpenFileDialog.filter = "CSV (*.csv)| *.csv"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $pathToCsv = $OpenFileDialog.filename
+
     Clear-Host
 
     $csvImport = Import-CSV $pathToCsv
@@ -550,18 +556,20 @@ Function Step4{
 }
 
 Function Step5{
-    ''
-    $pathToCsv = Read-Host "Enter path to CSV"
-    ''
-    while($(Test-Path -Path $pathToCsv -PathType Leaf) -eq $false){
-        ''
-        $pathToCsv = Read-Host "Path not valid. Please enter path to CSV"
-        ''
-    }
+    #Get file from Windows Explorer
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
     
+    Write-Host "Select JSON file from Windows Explorer"
+
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    # $OpenFileDialog.initialDirectory = $initialDirectory
+    $OpenFileDialog.filter = "JSON (*.json)| *.json"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $pathToJson = $OpenFileDialog.filename
+
     Clear-Host
 
-    $jsonImport = Get-Content $pathToCsv | ConvertFrom-Json 
+    $jsonImport = Get-Content $pathToJson | ConvertFrom-Json 
 
     $vars.DevicesToCheck = @{}
     foreach($deviceFromJson in $jsonImport.PSObject.Properties){
@@ -672,14 +680,17 @@ Function Step6{
                         $numDevicesDeleted++
                     }
                     
-                    if($count -eq 21 -and $identifiedDevice.Value.deleteStatus -ne "Do Not Delete"){
-                        #Add batch of 20 to array of batches
+                    #Add batch of 20 to array of batches
+                    if($device.value.count -lt 20 -and $count -eq $device.value.count){
+                        #There are less than 20 devices.  Adding batch to array of batches.
                         $null = $batchRequestItemsArray.add($batchRequestItems)
-                        #$batchRequest.requests += $batchRequestItems
+                    }elseif($count -eq 21 -and $identifiedDevice.Value.deleteStatus -ne "Do Not Delete"){
+                        #We have reached 20 devices. Adding batch to array of batches.
+                        $null = $batchRequestItemsArray.add($batchRequestItems)
                         $count = 1
                         $batchRequestItems = @()
                     }elseif( $batchRequestItemsArray.count * 20 + $count-1 -eq $deviceRegistration.count){
-                        #add last batch to array of batches. May be less thab 20 in the batch
+                        #Add the remaing batch. May be less than 20. Adding batch to array of batches.
                         $null = $batchRequestItemsArray.add($batchRequestItems)
                         $count = 1
                     }
