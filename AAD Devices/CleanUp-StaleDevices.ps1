@@ -23,7 +23,7 @@
 param (
     [Parameter( ValueFromPipeline=$true,
                 ValueFromPipelineByPropertyName=$true,
-                HelpMessage="Delete Azure AD devices")]
+                HelpMessage="Clean up stale Azure AD devices")]
     [string]$ClientID = "",
     [string]$ClientSecret = "",
     [string]$TenantID = ""
