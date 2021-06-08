@@ -731,7 +731,7 @@ Function Step6{
 Function menu{
     
     '========================================================'
-    Write-Host '        Device Deletion Tool          ' -ForegroundColor Green 
+    Write-Host '          Azure AD Stale Device Clean UP Tool      ' -ForegroundColor Green 
     '========================================================'
     ''
     Write-Host "Please provide any feedback, comment or suggestion" -ForegroundColor Yellow
