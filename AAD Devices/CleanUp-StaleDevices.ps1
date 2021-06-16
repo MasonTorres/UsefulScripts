@@ -729,24 +729,41 @@ Function Step6{
 }
 
 Function menu{
-    
+    if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        $forgroundColour = "DarkGray"
+        $numDevices = 0
+    }else{
+        $forgroundColour = "Green"
+        $numDevices = 0
+        foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+            foreach($deviceDuplicate in $device.value){
+                foreach($identifiedDevice in $deviceDuplicate.GetEnumerator()){
+                    $numDevices++
+                }
+            }
+        }
+    }
+
     '========================================================'
     Write-Host '          Azure AD Stale Device Clean UP Tool      ' -ForegroundColor Green 
     '========================================================'
     ''
     Write-Host "Please provide any feedback, comment or suggestion" -ForegroundColor Yellow
     ''
+    Write-Host "$($vars.DevicesToCheck.count) unique devices in memory" -ForegroundColor Magenta
+    Write-Host "$numDevices total devices in memory" -ForegroundColor Magenta
+    ''
     Write-Host "Enter (1) to get all Azure AD devices" -ForegroundColor Green
     ''
-    Write-Host "Enter (2) to save output as csv" -ForegroundColor Green
+    Write-Host "    Enter (2) to save output as csv" -ForegroundColor $forgroundColour
     ''
-    Write-Host "Enter (3) to save output as json" -ForegroundColor Green
+    Write-Host "    Enter (3) to save output as json" -ForegroundColor $forgroundColour
     ''
     Write-Host "Enter (4) to import devices from csv file" -ForegroundColor Green
     ''
     Write-Host "Enter (5) to import devices from json file" -ForegroundColor Green
     ''
-    Write-Host "Enter (6) to delete devices" -ForegroundColor Green
+    Write-Host "Enter (6) to delete devices" -ForegroundColor $forgroundColour
     ''
     Write-Host "Enter (9) to Quit" -ForegroundColor Green
     ''
