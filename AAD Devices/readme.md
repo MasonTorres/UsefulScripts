@@ -1,6 +1,6 @@
 # Create-Devices
 
-This sciprt will create a lot of device object in Azure AD. 1 every 2 seconds.
+This sciprt will create a lot of device objects in Azure AD. 1 every 2 seconds.
 
 # CleanUp-StaleDevices
 
@@ -16,7 +16,7 @@ The script collects all Azure AD devices and puts each device into a 'bucket' wi
 
 ### Script
 
-![Powershell Menu](img/PowerShellMenu01.png)
+![Powershell Menu](img/PowerShellMenu01.gif)
 
 This script does the following without the need to install any PowerShell Modules.
 1. Get all devices from Azure AD
