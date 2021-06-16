@@ -28,7 +28,7 @@ This script does the following without the need to install any PowerShell Module
    - **b** Export the hashtbale of devices as a json file.
 2. Imports CSV file. Using the template exported from option **1a** - amend the CSV and import
 3. Imports JSON file. Using the template exported from option **1b** - amend the JSON and import
-4. Loops through all unique devices from step 1, 2 or 3 and deletes all devices except for the one device marked **Do Not Delete**
+4. Loops through all unique devices from step 1, 2 or 3 and deletes all devices except for the devices marked **Do Not Delete**
     - Calls Microsoft Graph API in batches to speed up deletion of objects. 20 devices at a time will be deleted.
     - **This cannot be undone** use at own risk.
 9. Exit script.
