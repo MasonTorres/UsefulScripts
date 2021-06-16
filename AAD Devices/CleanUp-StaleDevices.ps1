@@ -190,7 +190,9 @@ function Invoke-MSGraph{
          [Parameter(Mandatory=$true)]
          [string] $Method,
          [Parameter(Mandatory=$false)]
-         [string] $Body
+         [string] $Body,
+         [Parameter(Mandatory=$false)]
+         [bool] $ShowProgress = $true
     )
 
     $ReturnValue = $null
@@ -211,7 +213,9 @@ function Invoke-MSGraph{
             $ReturnValue += $Result.value
             $OneSuccessfulFetch = $true
             $batchCount++
-            Write-Host -NoNewline "`rRecevied pages from Microsoft Graph API $batchCount"
+            if($ShowProgress -eq $true){
+                Write-Host -NoNewline "`rRecevied pages from Microsoft Graph API $batchCount"
+            }
         } 
         Catch [System.Net.WebException] {
             $x = $_
@@ -222,7 +226,6 @@ function Invoke-MSGraph{
             {
                 Write-Output "HTTP Status Code: 401 - Trying to get new Access Token"
                 # Token might have expired! Renew token and try again
-                ##$Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
                 try{
                     $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
                     $vars.ScriptStartTime = Get-Date
@@ -238,7 +241,6 @@ function Invoke-MSGraph{
                 # In the case we are making multiple individual calls to Invoke-MSGraph we may need to check the access token has expired in between calls.
                 # i.e the check above never occurs if MS Graph returns only one page of results.
                 Write-Output "Retrying..."
-                ##$Token.AccessToken = Get-AppToken -tenantId $Token.TenantID -clientId $Token.ClientID -clientSecret $Token.ClientSecret
                 try{
                     $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
                     $vars.ScriptStartTime = Get-Date
@@ -255,8 +257,13 @@ function Invoke-MSGraph{
                 Write-Output "HTTP Status Code: 429 - Throttled! Waiting some seconds"
 
                 # throttled request, wait for a few seconds and retry
-                [int] $delay = [int](($_.Exception.Response.Headers | Where-Object Key -eq 'Retry-After').Value[0])
-                Write-Verbose -Message "Retry Caught, delaying $delay s"
+                try{
+                    [int] $delay = [int](($_.Exception.Response.Headers | Where-Object Key -eq 'Retry-After').Value[0])
+                    Write-Verbose -Message "Retry Caught, delaying $delay s"
+                }catch{
+                    #Error receiving delay in seconds. Set to 5 seconds.
+                    $delay = 5
+                }
                 Start-Sleep -s $delay
             }
             elseif($statusCode -eq 403 -or $statusCode -eq 400 -or $statusCode -eq 401)
@@ -344,7 +351,7 @@ function Invoke-DeleteDevicesBatch{
 
     $body = $batchRequest | convertTo-Json
 
-    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -Body $body
+    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -Body $body -ShowProgress $false
 
     return $Result
 }
@@ -450,7 +457,7 @@ Function Step1{
     ''
 }
 
-Function Step2{
+Function StepA{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
         Write-Host "No devices found. Please run option 1" -ForegroundColor Yellow
     }else{
@@ -476,7 +483,7 @@ Function Step2{
     }
 }
 
-Function Step3{
+Function StepB{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
         Write-Host "No devices found. Please run option 1" -ForegroundColor Yellow
     }else{
@@ -486,7 +493,7 @@ Function Step3{
     }
 }
 
-Function Step4{
+Function Step2{
     
     Write-Host "Select CSV file from Windows Explorer"
 
@@ -500,62 +507,70 @@ Function Step4{
     $pathToCsv = $OpenFileDialog.filename
 
     Clear-Host
+    try{
+        Write-Host "Importing CSV file"
+        $csvImport = Import-CSV $pathToCsv
 
-    $csvImport = Import-CSV $pathToCsv
+        $row = 1
+        $vars.DevicesToCheck = @{}
+        foreach($device in $csvImport){
 
-    $row = 1
-    $vars.DevicesToCheck = @{}
-    foreach($device in $csvImport){
-
-        $row++
-        if([string]::IsNullOrEmpty($device.Computer) -or [string]::IsNullOrEmpty($device.CreatedDateTime) -or [string]::IsNullOrEmpty($device.ObjectID) -or [string]::IsNullOrEmpty($device.DeviceID)){
-            Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
-            if([string]::IsNullOrEmpty($device.Computer)){
-                Write-Host "Computer is empty"
-            }
-
-            if([string]::IsNullOrEmpty($device.CreatedDateTime)){
-                Write-Host "CreatedDateTime is empty"
-            }
-
-            if([string]::IsNullOrEmpty($device.ObjectID)){
-                Write-Host "ObjectID is empty"
-            }
-
-            if([string]::IsNullOrEmpty($device.DeviceID)){
-                Write-Host "DeviceID is empty"
-            }
-            ''
-        }else{
-            if($vars.DevicesToCheck[$device.Computer]){
-            
-                $vars.DevicesToCheck[$device.Computer] +=  @{
-                    $device.ObjectID = @{
-                        deviceId = $device.deviceId
-                        objectId = $device.ObjectID
-                        registrationDateTime = $device.registrationDateTime
-                        createdDateTime = $device.createdDateTime
-                        displayName = $device.displayName
-                        deleteStatus = $device.DeleteStatus
-                    }
+            $row++
+            if([string]::IsNullOrEmpty($device.Computer) -or [string]::IsNullOrEmpty($device.CreatedDateTime) -or [string]::IsNullOrEmpty($device.ObjectID) -or [string]::IsNullOrEmpty($device.DeviceID)){
+                Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
+                if([string]::IsNullOrEmpty($device.Computer)){
+                    Write-Host "Computer is empty"
                 }
+
+                if([string]::IsNullOrEmpty($device.CreatedDateTime)){
+                    Write-Host "CreatedDateTime is empty"
+                }
+
+                if([string]::IsNullOrEmpty($device.ObjectID)){
+                    Write-Host "ObjectID is empty"
+                }
+
+                if([string]::IsNullOrEmpty($device.DeviceID)){
+                    Write-Host "DeviceID is empty"
+                }
+                ''
             }else{
-                $vars.DevicesToCheck.add($device.Computer, @{
-                    $device.ObjectID = @{
-                        deviceId = $device.deviceId
-                        objectId = $device.ObjectID
-                        registrationDateTime = $device.registrationDateTime
-                        createdDateTime = $device.createdDateTime
-                        displayName = $device.Computer
-                        deleteStatus = $device.DeleteStatus
+                if($vars.DevicesToCheck[$device.Computer]){
+                
+                    $vars.DevicesToCheck[$device.Computer] +=  @{
+                        $device.ObjectID = @{
+                            deviceId = $device.deviceId
+                            objectId = $device.ObjectID
+                            registrationDateTime = $device.registrationDateTime
+                            createdDateTime = $device.createdDateTime
+                            displayName = $device.displayName
+                            deleteStatus = $device.DeleteStatus
+                        }
                     }
-                })
+                }else{
+                    $vars.DevicesToCheck.add($device.Computer, @{
+                        $device.ObjectID = @{
+                            deviceId = $device.deviceId
+                            objectId = $device.ObjectID
+                            registrationDateTime = $device.registrationDateTime
+                            createdDateTime = $device.createdDateTime
+                            displayName = $device.Computer
+                            deleteStatus = $device.DeleteStatus
+                        }
+                    })
+                }
             }
         }
+
+        Clear-Host
+        Write-Host "Sucecssfully imported CSV file." -ForegroundColor Magenta
+    }catch{
+        Write-Host "An Error occurred reading CSV file" -ForegroundColor Red
+        Write-Error $_
     }
 }
 
-Function Step5{
+Function Step3{
     #Get file from Windows Explorer
     [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
     
@@ -568,55 +583,46 @@ Function Step5{
     $pathToJson = $OpenFileDialog.filename
 
     Clear-Host
+    Write-Host "Importing JSON file"
 
-    $jsonImport = Get-Content $pathToJson | ConvertFrom-Json 
+    try{
+        $jsonImport = Get-Content $pathToJson | ConvertFrom-Json 
 
-    $vars.DevicesToCheck = @{}
-    foreach($deviceFromJson in $jsonImport.PSObject.Properties){
+        $vars.DevicesToCheck = @{}
+        foreach($deviceFromJson in $jsonImport.PSObject.Properties){
 
-        $device = @{
-            $deviceFromJson.Name = @{}
-        }
+            $device = @{
+                $deviceFromJson.Name = @{}
+            }
 
-        foreach($dupDevice in $deviceFromJson.value.psobject.Properties.value){
+            foreach($dupDevice in $deviceFromJson.value.psobject.Properties.value){
 
-            if( [string]::IsNullOrEmpty($dupDevice.displayName) -or 
-                [string]::IsNullOrEmpty($dupDevice.createdDateTime) -or 
-                [string]::IsNullOrEmpty($dupDevice.objectId) -or 
-                [string]::IsNullOrEmpty($dupDevice.deviceId))
-            {
-                Write-Host "Error on json value." -ForegroundColor Red
-                if([string]::IsNullOrEmpty($dupDevice.displayName)){
-                    Write-Host "$($dupDevice.objectId): Computer is empty"
-                }
-    
-                if([string]::IsNullOrEmpty($dupDevice.createdDateTime)){
-                    Write-Host "$($dupDevice.displayName): CreatedDateTime is empty"
-                }
-    
-                if([string]::IsNullOrEmpty($dupDevice.objectId)){
-                    Write-Host "$($dupDevice.displayName): ObjectID is empty"
-                }
-    
-                if([string]::IsNullOrEmpty($dupDevice.deviceId)){
-                    Write-Host "$($dupDevice.displayName): DeviceID is empty"
-                }
-                ''
-            }else{
-
-                if($device[$deviceFromJson.Name]){
-                    $device.($deviceFromJson.Name) += @{
-                        $dupDevice.objectId = @{
-                        displayName = $dupDevice.displayName
-                        objectId = $dupDevice.objectId
-                        createdDateTime = $dupDevice.createdDateTime
-                        registrationDateTime = $dupDevice.registrationDateTime
-                        deviceId = $dupDevice.deviceId
-                        deleteStatus = $dupDevice.deleteStatus
+                if( [string]::IsNullOrEmpty($dupDevice.displayName) -or 
+                    [string]::IsNullOrEmpty($dupDevice.createdDateTime) -or 
+                    [string]::IsNullOrEmpty($dupDevice.objectId) -or 
+                    [string]::IsNullOrEmpty($dupDevice.deviceId))
+                {
+                    Write-Host "Error on json value." -ForegroundColor Red
+                    if([string]::IsNullOrEmpty($dupDevice.displayName)){
+                        Write-Host "$($dupDevice.objectId): Computer is empty"
                     }
-                }
+        
+                    if([string]::IsNullOrEmpty($dupDevice.createdDateTime)){
+                        Write-Host "$($dupDevice.displayName): CreatedDateTime is empty"
+                    }
+        
+                    if([string]::IsNullOrEmpty($dupDevice.objectId)){
+                        Write-Host "$($dupDevice.displayName): ObjectID is empty"
+                    }
+        
+                    if([string]::IsNullOrEmpty($dupDevice.deviceId)){
+                        Write-Host "$($dupDevice.displayName): DeviceID is empty"
+                    }
+                    ''
                 }else{
-                    $device.add($deviceFromJson.Name, @{
+
+                    if($device[$deviceFromJson.Name]){
+                        $device.($deviceFromJson.Name) += @{
                             $dupDevice.objectId = @{
                             displayName = $dupDevice.displayName
                             objectId = $dupDevice.objectId
@@ -625,16 +631,34 @@ Function Step5{
                             deviceId = $dupDevice.deviceId
                             deleteStatus = $dupDevice.deleteStatus
                         }
-                    })
+                    }
+                    }else{
+                        $device.add($deviceFromJson.Name, @{
+                                $dupDevice.objectId = @{
+                                displayName = $dupDevice.displayName
+                                objectId = $dupDevice.objectId
+                                createdDateTime = $dupDevice.createdDateTime
+                                registrationDateTime = $dupDevice.registrationDateTime
+                                deviceId = $dupDevice.deviceId
+                                deleteStatus = $dupDevice.deleteStatus
+                            }
+                        })
+                    }
                 }
             }
+
+            $vars.DevicesToCheck += $device
         }
 
-        $vars.DevicesToCheck += $device
+        Clear-Host
+        Write-Host "Sucecssfully imported JSON file." -ForegroundColor Magenta
+    }catch{
+        Write-Host "An Error occurred reading JSON file" -ForegroundColor Red
+        Write-Error $_
     }
 }
 
-Function Step6{
+Function Step4{
 
     $numDevicesToDelete = 0
     $numDevicesNotToDelete = 0
@@ -755,38 +779,38 @@ Function menu{
     ''
     Write-Host "Enter (1) to get all Azure AD devices" -ForegroundColor Green
     ''
-    Write-Host "    Enter (2) to save output as csv" -ForegroundColor $forgroundColour
+    Write-Host "    Enter (a) to save output as csv" -ForegroundColor $forgroundColour
     ''
-    Write-Host "    Enter (3) to save output as json" -ForegroundColor $forgroundColour
+    Write-Host "    Enter (b) to save output as json" -ForegroundColor $forgroundColour
     ''
-    Write-Host "Enter (4) to import devices from csv file" -ForegroundColor Green
+    Write-Host "Enter (2) to import devices from csv file" -ForegroundColor Green
     ''
-    Write-Host "Enter (5) to import devices from json file" -ForegroundColor Green
+    Write-Host "Enter (3) to import devices from json file" -ForegroundColor Green
     ''
-    Write-Host "Enter (6) to delete devices" -ForegroundColor $forgroundColour
+    Write-Host "Enter (4) to delete devices" -ForegroundColor $forgroundColour
     ''
     Write-Host "Enter (9) to Quit" -ForegroundColor Green
     ''
 
-    $Num =''
-    $Num = Read-Host -Prompt "Please make a selection, and press Enter" 
+    $Selector =''
+    $Selector = Read-Host -Prompt "Please make a selection, and press Enter" 
 
-    While(($Num -ne '1') -AND ($Num -ne '2') -AND ($Num -ne '3') -AND ($Num -ne '4') -AND ($Num -ne '5') -AND ($Num -ne '6') -AND ($Num -ne '7') -AND ($Num -ne '9')){
+    While(($Selector -ne '1') -AND ($Selector -ne 'a') -AND ($Selector -ne 'b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '9')){
 
-        $Num = Read-Host -Prompt "Invalid input. Please make a correct selection from the above options, and press Enter" 
+        $Selector = Read-Host -Prompt "Invalid input. Please make a correct selection from the above options, and press Enter" 
         
     }
-    RunSelection -Num $Num
+    RunSelection -Selector $Selector
 }
 
 function RunSelection{
     Param
     (
         [Parameter(Mandatory=$true, Position=0)]
-        [int] $Num
+        [string] $Selector
     )
 
-    if($Num -eq '1'){
+    if($Selector -eq '1'){
         Clear-Host
 
         ''
@@ -794,42 +818,42 @@ function RunSelection{
         ''
         Invoke-CheckVariables
         Step1
-    }elseif($Num -eq '2'){
+    }elseif($Selector -eq 'a'){
         Clear-Host
 
         ''
         Write-Host "Save output as csv option has been chosen" -BackgroundColor Black
         ''
-        Step2
-    }elseif($Num -eq '3'){
+        StepA
+    }elseif($Selector -eq 'b'){
         Clear-Host
 
         ''
         Write-Host "Save output as json option has been chosen" -BackgroundColor Black
         ''
-        Step3
-    }elseif($Num -eq '4'){
+        StepB
+    }elseif($Selector -eq '2'){
         Clear-Host
 
         ''
         Write-Host "Import device from csv file option has been chosen" -BackgroundColor Black
         ''
-        Step4
-    }elseif($Num -eq '5'){
+        Step2
+    }elseif($Selector -eq '3'){
         Clear-Host
 
         ''
         Write-Host "Import device from json file option has been chosen" -BackgroundColor Black
         ''
-        Step5
-    }elseif($Num -eq '6'){
+        Step3
+    }elseif($Selector -eq '4'){
         Clear-Host
         ''
         Write-Host "Delete devices option has been chosen" -BackgroundColor Black
         ''
         Invoke-CheckVariables
-        Step6
-    }elseif($Num -eq '9'){
+        Step4
+    }elseif($Selector -eq '9'){
         break
     }
 
