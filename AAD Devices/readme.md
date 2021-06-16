@@ -4,7 +4,19 @@ This sciprt will create a lot of device object in Azure AD. 1 every 2 seconds.
 
 # CleanUp-StaleDevices
 
-![Powershell Menu](PowerShellMenu01.png)
+### Scenario
+
+The purpose of this script is to help delete stale or old devices that exist in Azure AD that are no longer valid. 
+
+In the screenshot below we can see many devivces with the same name. Only the latest deivce is valid.
+
+The script collects all Azure AD devices and puts each device into a 'bucket' with other devices that have the same name. It then identifies the most recent device in each bucket. You can export the results to CSV or JSON to double check or manipulate the data, then import any updates you've made. Finally, you can delete the stale devices.
+
+![Powershell Menu](img/DuplicateDevicesSameName.png)
+
+### Script
+
+![Powershell Menu](img/PowerShellMenu01.png)
 
 This script does the following without the need to install any PowerShell Modules.
 1. Get all devices from Azure AD
