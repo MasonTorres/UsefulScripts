@@ -459,37 +459,51 @@ Function Step1{
 
 Function StepA{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
-        Write-Host "No devices found. Please run option 1" -ForegroundColor Yellow
+        Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
     }else{
-        # Export the hashtable as a CSV file
-        $CsvOutput = @()
-        foreach($device in $vars.DevicesToCheck.GetEnumerator()){
-            
-            foreach($deviceRegistration in $device.value){
+        try{
+            # Export the hashtable as a CSV file
+            $CsvOutput = @()
+            foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+                
+                foreach($deviceRegistration in $device.value){
 
-                foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
-                    $details = [ordered]@{}
-                    $details.add("Computer", $device.Name)
-                    $details.add("DeleteStatus", $identifiedDevice.value.deleteStatus)
-                    $details.add("CreatedDateTime", $identifiedDevice.value.createdDateTime)
-                    $details.add("ObjectID", $identifiedDevice.value.objectId)
-                    $details.add("DeviceID", $identifiedDevice.value.deviceId)
+                    foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
+                        $details = [ordered]@{}
+                        $details.add("Computer", $device.Name)
+                        $details.add("DeleteStatus", $identifiedDevice.value.deleteStatus)
+                        $details.add("CreatedDateTime", $identifiedDevice.value.createdDateTime)
+                        $details.add("ObjectID", $identifiedDevice.value.objectId)
+                        $details.add("DeviceID", $identifiedDevice.value.deviceId)
 
-                    $CsvOutput+= New-Object PSObject -Property $details
+                        $CsvOutput+= New-Object PSObject -Property $details
+                    }
                 }
             }
+            $CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
+            Clear-Host
+            Write-Host "Sucecssfully exported CSV file." -ForegroundColor Magenta
+        }catch{
+            Write-Host "An Error occurred exporting CSV file" -ForegroundColor Red
+            Write-Error $_
         }
-        $CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
     }
 }
 
 Function StepB{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
-        Write-Host "No devices found. Please run option 1" -ForegroundColor Yellow
+        Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
     }else{
-        # Export the hashtable as a JSON object
-        $jsonOutput =  $vars.DevicesToCheck | ConvertTo-Json
-        $jsonOutput | Out-File DuplicateDevices.json
+        try{
+            # Export the hashtable as a JSON object
+            $jsonOutput =  $vars.DevicesToCheck | ConvertTo-Json
+            $jsonOutput | Out-File DuplicateDevices.json
+            Clear-Host
+            Write-Host "Sucecssfully exported JSON file." -ForegroundColor Magenta
+        }catch{
+            Write-Host "An Error occurred exporting JSON file" -ForegroundColor Red
+            Write-Error $_
+        }
     }
 }
 
@@ -543,7 +557,7 @@ Function Step2{
                             objectId = $device.ObjectID
                             registrationDateTime = $device.registrationDateTime
                             createdDateTime = $device.createdDateTime
-                            displayName = $device.displayName
+                            displayName = $device.Computer
                             deleteStatus = $device.DeleteStatus
                         }
                     }
@@ -586,6 +600,7 @@ Function Step3{
     Write-Host "Importing JSON file"
 
     try{
+        $errorImportingDevice = 0
         $jsonImport = Get-Content $pathToJson | ConvertFrom-Json 
 
         $vars.DevicesToCheck = @{}
@@ -605,18 +620,22 @@ Function Step3{
                     Write-Host "Error on json value." -ForegroundColor Red
                     if([string]::IsNullOrEmpty($dupDevice.displayName)){
                         Write-Host "$($dupDevice.objectId): Computer is empty"
+                        $errorImportingDevice++
                     }
         
                     if([string]::IsNullOrEmpty($dupDevice.createdDateTime)){
                         Write-Host "$($dupDevice.displayName): CreatedDateTime is empty"
+                        $errorImportingDevice++
                     }
         
                     if([string]::IsNullOrEmpty($dupDevice.objectId)){
                         Write-Host "$($dupDevice.displayName): ObjectID is empty"
+                        $errorImportingDevice++
                     }
         
                     if([string]::IsNullOrEmpty($dupDevice.deviceId)){
                         Write-Host "$($dupDevice.displayName): DeviceID is empty"
+                        $errorImportingDevice++
                     }
                     ''
                 }else{
@@ -650,8 +669,13 @@ Function Step3{
             $vars.DevicesToCheck += $device
         }
 
-        Clear-Host
-        Write-Host "Sucecssfully imported JSON file." -ForegroundColor Magenta
+        if($errorImportingDevice -gt 0){
+            Write-Host "There is missing data in some of the json values. Please fix source data and re-run" -ForegroundColor Red
+            $vars.DevicesToCheck = @{}
+        }else{
+            Clear-Host
+            Write-Host "Sucecssfully imported JSON file." -ForegroundColor Magenta
+        }
     }catch{
         Write-Host "An Error occurred reading JSON file" -ForegroundColor Red
         Write-Error $_
@@ -659,93 +683,96 @@ Function Step3{
 }
 
 Function Step4{
-
-    $numDevicesToDelete = 0
-    $numDevicesNotToDelete = 0
-    foreach($device in $vars.DevicesToCheck.GetEnumerator()){
-        foreach($deviceDuplicate in $device.value){
-            foreach($identifiedDevice in $deviceDuplicate.GetEnumerator()){
-                if($identifiedDevice.value.deleteStatus -ne "Do Not Delete"){
-                    $numDevicesToDelete++
-                }else{
-                    $numDevicesNotToDelete++
+    if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
+    }else{
+        $numDevicesToDelete = 0
+        $numDevicesNotToDelete = 0
+        foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+            foreach($deviceDuplicate in $device.value){
+                foreach($identifiedDevice in $deviceDuplicate.GetEnumerator()){
+                    if($identifiedDevice.value.deleteStatus -ne "Do Not Delete"){
+                        $numDevicesToDelete++
+                    }else{
+                        $numDevicesNotToDelete++
+                    }
                 }
             }
         }
-    }
 
-    ''
-    Write-Host "This action will delete $numDevicesToDelete devices and ignore $numDevicesNotToDelete devices" -ForegroundColor Red
-    Write-Host "This action can NOT be undone!" -ForegroundColor Red
-    ''
-    $ProceedToDeleteDevices = Read-Host -Prompt "Are you sure you want to delete $numDevicesToDelete devices? (Y/N)"
-    ''
+        ''
+        Write-Host "This action will delete $numDevicesToDelete devices and ignore $numDevicesNotToDelete devices" -ForegroundColor Red
+        Write-Host "This action can NOT be undone!" -ForegroundColor Red
+        ''
+        $ProceedToDeleteDevices = Read-Host -Prompt "Are you sure you want to delete $numDevicesToDelete devices? (Y/N)"
+        ''
 
-    if($ProceedToDeleteDevices -eq "Y"){
-        $numDevicesDeleted = 0
+        if($ProceedToDeleteDevices -eq "Y"){
+            $numDevicesDeleted = 0
 
-        # Create batch requests and delete devices
-        foreach($device in $vars.DevicesToCheck.GetEnumerator()){
-            # Create an array of batches
-            # Each batch contains up to 20 Microsoft Graph API requests https://docs.microsoft.com/en-us/graph/json-batching
-            [System.Collections.ArrayList]$batchRequestItemsArray = @()
-            foreach($deviceRegistration in $device.value){
-                $batchRequestItems = @()
-                $count = 1
-                foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
-                    if($identifiedDevice.Value.deleteStatus -ne "Do Not Delete" -and $count -le 20){
-                        $details = [ordered]@{}
-                        $details.add("id", $count)
-                        $details.add("method", "DELETE")
-                        $details.add("url", "/devices/$($identifiedDevice.Value.objectId)")
+            # Create batch requests and delete devices
+            foreach($device in $vars.DevicesToCheck.GetEnumerator()){
+                # Create an array of batches
+                # Each batch contains up to 20 Microsoft Graph API requests https://docs.microsoft.com/en-us/graph/json-batching
+                [System.Collections.ArrayList]$batchRequestItemsArray = @()
+                foreach($deviceRegistration in $device.value){
+                    $batchRequestItems = @()
+                    $count = 1
+                    foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
+                        if($identifiedDevice.Value.deleteStatus -ne "Do Not Delete" -and $count -le 20){
+                            $details = [ordered]@{}
+                            $details.add("id", $count)
+                            $details.add("method", "DELETE")
+                            $details.add("url", "/devices/$($identifiedDevice.Value.objectId)")
 
-                        $batchRequestItems += New-Object PSObject -Property $details
-                        $count++
-                        $numDevicesDeleted++
-                    }
-                    
-                    #Add batch of 20 to array of batches
-                    if($device.value.count -lt 20 -and $count -eq $device.value.count){
-                        #There are less than 20 devices.  Adding batch to array of batches.
-                        $null = $batchRequestItemsArray.add($batchRequestItems)
-                    }elseif($count -eq 21 -and $identifiedDevice.Value.deleteStatus -ne "Do Not Delete"){
-                        #We have reached 20 devices. Adding batch to array of batches.
-                        $null = $batchRequestItemsArray.add($batchRequestItems)
-                        $count = 1
-                        $batchRequestItems = @()
-                    }elseif( $batchRequestItemsArray.count * 20 + $count-1 -eq $deviceRegistration.count){
-                        #Add the remaing batch. May be less than 20. Adding batch to array of batches.
-                        $null = $batchRequestItemsArray.add($batchRequestItems)
-                        $count = 1
-                    }
-
-                    Write-Host "`rDeleting devices $numDevicesDeleted / $numDevicesToDelete" -NoNewline
-                }
-            }
-
-
-
-            # Loop through all the batches and execute batch request
-            foreach($batch in $batchRequestItemsArray){
-                if($batch.count -gt 0){
-                    #refresh token after 45mins time has elapsed
-                    if(( Get-Date $vars.ScriptStartTime).AddMinutes(45) -lt (Get-Date)){
-                        Write-Output "Refreshing tokens" 
-
-                        try{
-                            $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
-                            $vars.ScriptStartTime = Get-Date
-                            
-                        }catch{
-                            $e = $_
-                            $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                            $batchRequestItems += New-Object PSObject -Property $details
+                            $count++
+                            $numDevicesDeleted++
                         }
-                    }
+                        
+                        #Add batch of 20 to array of batches
+                        if($device.value.count -lt 20 -and $count -eq $device.value.count){
+                            #There are less than 20 devices.  Adding batch to array of batches.
+                            $null = $batchRequestItemsArray.add($batchRequestItems)
+                        }elseif($count -eq 21 -and $identifiedDevice.Value.deleteStatus -ne "Do Not Delete"){
+                            #We have reached 20 devices. Adding batch to array of batches.
+                            $null = $batchRequestItemsArray.add($batchRequestItems)
+                            $count = 1
+                            $batchRequestItems = @()
+                        }elseif( $batchRequestItemsArray.count * 20 + $count-1 -eq $deviceRegistration.count){
+                            #Add the remaing batch. May be less than 20. Adding batch to array of batches.
+                            $null = $batchRequestItemsArray.add($batchRequestItems)
+                            $count = 1
+                        }
 
-                    # Execute batch job and delete devices
-                    $batchRequest = @{"requests" = $batch}
-                    $deleteResult = Invoke-DeleteDevicesBatch -Token $vars.DelegateToken -batchRequest $batchRequest
-                    
+                        Write-Host "`rDeleting devices $numDevicesDeleted / $numDevicesToDelete" -NoNewline
+                    }
+                }
+
+
+
+                # Loop through all the batches and execute batch request
+                foreach($batch in $batchRequestItemsArray){
+                    if($batch.count -gt 0){
+                        #refresh token after 45mins time has elapsed
+                        if(( Get-Date $vars.ScriptStartTime).AddMinutes(45) -lt (Get-Date)){
+                            Write-Output "Refreshing tokens" 
+
+                            try{
+                                $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+                                $vars.ScriptStartTime = Get-Date
+                                
+                            }catch{
+                                $e = $_
+                                $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                            }
+                        }
+
+                        # Execute batch job and delete devices
+                        $batchRequest = @{"requests" = $batch}
+                        $deleteResult = Invoke-DeleteDevicesBatch -Token $vars.DelegateToken -batchRequest $batchRequest
+                        
+                    }
                 }
             }
         }
@@ -779,9 +806,9 @@ Function menu{
     ''
     Write-Host "Enter (1) to get all Azure AD devices" -ForegroundColor Green
     ''
-    Write-Host "    Enter (a) to save output as csv" -ForegroundColor $forgroundColour
+    Write-Host "    Enter (a) to save devices in memory to csv" -ForegroundColor $forgroundColour
     ''
-    Write-Host "    Enter (b) to save output as json" -ForegroundColor $forgroundColour
+    Write-Host "    Enter (b) to save devices in memory to json" -ForegroundColor $forgroundColour
     ''
     Write-Host "Enter (2) to import devices from csv file" -ForegroundColor Green
     ''
