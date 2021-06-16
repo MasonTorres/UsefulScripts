@@ -2,7 +2,7 @@
 
 This sciprt will create a lot of device object in Azure AD. 1 every 2 seconds.
 
-# Delete-Devices
+# CleanUp-StaleDevices
 
 ![Powershell Menu](PowerShellMenu01.png)
 
@@ -11,14 +11,15 @@ This script does the following without the need to install any PowerShell Module
    - Creates a hashtable containing all **unique** device names. 
      - Each Unique device will contain one or more child obejct. These child objects represent each device with the same name.
    - Loops through each unique device.
-     - Finds the child device with the most recent creation date and sets **DeviceStatus** to **Do Not Delete**
-2. Export the hashtable of devices as a csv file.
-3. Export the hashtbale of devices as a json file.
-4. Imports CSV file. Using the template exported from option 2 - amend the CSV and import
-5. Imports JSON file. Using the template exported from option 3 - amend the JSON and import
-6. Loops through all unique devices from step 1, 4 or 5 and deletes all devices except for the one device marked **Do Not Delete**
+     - Finds the child device with the most recent creation date and sets **DeviceStatus** to **Do Not Delete** (this is a local variable in the script)
+   - **a** Export the hashtable of devices as a csv file.
+   - **b** Export the hashtbale of devices as a json file.
+2. Imports CSV file. Using the template exported from option **1a** - amend the CSV and import
+3. Imports JSON file. Using the template exported from option **1b** - amend the JSON and import
+4. Loops through all unique devices from step 1, 2 or 3 and deletes all devices except for the one device marked **Do Not Delete**
     - Calls Microsoft Graph API in batches to speed up deletion of objects. 20 devices at a time will be deleted.
-    - **This cannot be undone** use at own risk
+    - **This cannot be undone** use at own risk.
+9. Exit script.
 
 **Notes**
 - This script uses device authentication flow to obtain a Access Token with Delegate permissions to the Microsoft Graph API scope Directory.AccessAsUser.All.
