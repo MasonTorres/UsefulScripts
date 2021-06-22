@@ -386,7 +386,6 @@ function Invoke-CheckVariables{
 
 Function Step1{
     # Get our Access Token for Microsoft Graph API
-    #$vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
     try{
         $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
         $vars.ScriptStartTime = Get-Date
