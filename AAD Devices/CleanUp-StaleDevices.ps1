@@ -12,6 +12,7 @@
 # Create an App Registration 
 # Assign Delegate permissions: 	Directory.AccessAsUser.All https://docs.microsoft.com/en-us/graph/api/device-delete?view=graph-rest-1.0&tabs=http
 # Create Application secret
+# Set the App Registration to Public
 # Update $vars variable below: ClientSecret, ClientID and TenantID 
 
 # This script will delete devices from Azure AD.
