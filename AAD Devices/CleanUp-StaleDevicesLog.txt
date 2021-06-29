@@ -26,3 +26,13 @@
 2021-06-29 12:03:16Z Prompt user to select JSON file from Windows Explorer
 2021-06-29 12:03:17Z Importing JSON file
 2021-06-29 12:03:27Z Sucecssfully imported JSON file.
+2021-06-29 13:28:44Z Menu Option: Get all Azure AD devices option has been chosen
+2021-06-29 13:28:44Z Getting new Acess Token using Refresh Token
+2021-06-29 13:28:44Z Success
+2021-06-29 13:28:44Z Getting devices...
+2021-06-29 13:28:44Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-06-29 13:28:44Z Body: 
+2021-06-29 13:29:46Z Number of Devices: 45117
+2021-06-29 13:29:46Z Number of Unique devices by name: 537
+2021-06-29 13:30:05Z Menu Option: Save output as csv option has been chosen
+2021-06-29 13:31:56Z Sucecssfully exported CSV file.
