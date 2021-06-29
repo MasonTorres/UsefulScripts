@@ -44,6 +44,8 @@ $vars = @{
 
     AllDevices = @{}
     DevicesToCheck = @{}
+
+    LogFile = "CleanUp-StaleDevicesLog.txt"
 }
 
 Add-Type -AssemblyName System.Web
@@ -196,6 +198,9 @@ function Invoke-MSGraph{
          [bool] $ShowProgress = $true
     )
 
+    Write-Log "Entering Graph call Uri: $Uri Method: $Method"
+    Write-Log "Body: $body"
+
     $ReturnValue = $null
     $OneSuccessfulFetch = $null
     $PermissionCheck = $false
@@ -221,18 +226,23 @@ function Invoke-MSGraph{
         Catch [System.Net.WebException] {
             $x = $_
             $statusCode = [int]$_.Exception.Response.StatusCode
-            Write-Output "HTTP Status Code: $statusCode"
+            Write-Log "HTTP Status Code: $statusCode"
+            Write-Log $_.Exception.Message
             Write-Output $_.Exception.Message
             if($statusCode -eq 401 -and $OneSuccessfulFetch)
             {
-                Write-Output "HTTP Status Code: 401 - Trying to get new Access Token"
+                Write-Log "HTTP Status Code: 401 - Trying to get new Access Token"
                 # Token might have expired! Renew token and try again
                 try{
+                    Write-Log "Refreshing tokens within Graph call." 
                     $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
                     $vars.ScriptStartTime = Get-Date
+                    Write-Log "Success"
                     
                 }catch{
-                    $e = $_
+                    Write-Log "Could not refresh token."
+                    Write-Log $_.Exception.Message
+                    Write-Log "Trying to get new token"
                     $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
                 }
 
@@ -241,7 +251,7 @@ function Invoke-MSGraph{
             elseif ($statusCode -eq 401 -and $PermissionCheck -eq $false) {
                 # In the case we are making multiple individual calls to Invoke-MSGraph we may need to check the access token has expired in between calls.
                 # i.e the check above never occurs if MS Graph returns only one page of results.
-                Write-Output "Retrying..."
+                Write-Log "Retrying...Getting new access token"
                 try{
                     $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
                     $vars.ScriptStartTime = Get-Date
@@ -255,12 +265,12 @@ function Invoke-MSGraph{
             }
             elseif($statusCode -eq 429)
             {
-                Write-Output "HTTP Status Code: 429 - Throttled! Waiting some seconds"
+                Write-Log "HTTP Status Code: 429 - Throttled! Waiting some seconds"
 
                 # throttled request, wait for a few seconds and retry
                 try{
                     [int] $delay = [int](($_.Exception.Response.Headers | Where-Object Key -eq 'Retry-After').Value[0])
-                    Write-Verbose -Message "Retry Caught, delaying $delay s"
+                    Write-Log "Retry Caught, delaying $delay s"
                 }catch{
                     #Error receiving delay in seconds. Set to 5 seconds.
                     $delay = 5
@@ -269,16 +279,16 @@ function Invoke-MSGraph{
             }
             elseif($statusCode -eq 403 -or $statusCode -eq 400 -or $statusCode -eq 401)
             {
-                Write-Output "Please check the permissions"
+                Write-Log "Please check the permissions"
                 break;
             }
             else {
                 if ($RetryCount -lt 5) {
-                    Write-Output "Retrying..."
+                    Write-Log "Retrying...Retry count: $RetryCount"
                     $RetryCount++
                 }
                 else {
-                    Write-Output "Request failed. Please try again in the future."
+                    Write-Log "Request failed. Please try again in the future."
                     break
                 }
             }
@@ -287,17 +297,36 @@ function Invoke-MSGraph{
             $exType = $_.Exception.GetType().FullName
             $exMsg = $_.Exception.Message
     
-            Write-Output "Exception: $_.Exception"
-            Write-Output "Error Message: $exType"
-            Write-Output "Error Message: $exMsg"
+            Write-Log "Exception: $($_.Exception)"
+            Write-Log "Error Message: $exType"
+            Write-Log "Error Message: $exMsg"
     
             if ($RetryCount -lt 5) {
-                Write-Output "Retrying..."
+                Write-Log "Retrying...Retry count: $RetryCount"
                 $RetryCount++
             }
             else {
-                Write-Output "Request failed. Please try again in the future."
+                Write-Log "Graph request failed. Please try again in the future."
                 break
+            }
+        }
+
+        #hot fix :D
+        #refresh token after 45mins time has elapsed
+        if(( Get-Date $vars.ScriptStartTime).AddMinutes(45) -lt (Get-Date)){
+            Write-Log "45 mins elapsed. StartTime: Get-Date $($vars.ScriptStartTime)"
+
+            try{
+                Write-Log "Refreshing tokens within Graph call." 
+                $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+                $vars.ScriptStartTime = Get-Date
+                Write-Log "Success" 
+                
+            }catch{
+                Write-Log "Could not refresh token."
+                Write-Log $_.Exception.Message
+                Write-Log "Trying to get new token"
+                $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
             }
         }
     }
@@ -313,7 +342,7 @@ function Get-Devices{
          [hashtable] $Token
     )
 
-    $uri = "https://graph.microsoft.com/beta/devices"
+    $uri = "https://graph.microsoft.com/beta/devices?`$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid"
     $method = "GET"
 
     $Devices = Invoke-MSGraph -Token $Token -Uri $uri -Method $method 
@@ -374,8 +403,10 @@ function Invoke-CheckVariables{
     }
 
     try{
+        Write-Log "Getting new Acess Token using Refresh Token"
         $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
         $vars.ScriptStartTime = Get-Date
+        Write-Log "Success"
         
     }catch{
         $e = $_
@@ -383,6 +414,16 @@ function Invoke-CheckVariables{
     }
 
     Clear-Host
+}
+
+Function Write-Log{
+    Param
+    (
+         [Parameter(Mandatory=$true, Position=0)]
+         [string] $String
+    )
+    $datetimeUTC = get-date -f u
+    Add-Content $vars.LogFile "$datetimeUTC $string"
 }
 
 Function Step1{
@@ -397,6 +438,7 @@ Function Step1{
     }
 
     ''
+    Write-Log "Getting devices..."
     Write-Host "Getting devices..."
 
     # Get all risky users from Microsoft Graph API
@@ -452,13 +494,16 @@ Function Step1{
     }
 
     ''
+    Write-Log "Number of Devices: $($vars.AllDevices.count)"
     Write-Host "Number of Devices: $($vars.AllDevices.count)" -ForegroundColor Magenta
+    Write-Log "Number of Unique devices by name: $($vars.DevicesToCheck.count)"
     Write-Host "Number of Unique devices by name: $($vars.DevicesToCheck.count)" -ForegroundColor Magenta
     ''
 }
 
 Function StepA{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        Write-Log "No devices found. please run option 1, 2 or 3"
         Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
     }else{
         try{
@@ -482,8 +527,10 @@ Function StepA{
             }
             $CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
             Clear-Host
+            Write-Log "Sucecssfully exported CSV file."
             Write-Host "Sucecssfully exported CSV file." -ForegroundColor Magenta
         }catch{
+            Write-Log "An Error occurred exporting CSV file"
             Write-Host "An Error occurred exporting CSV file" -ForegroundColor Red
             Write-Error $_
         }
@@ -492,6 +539,7 @@ Function StepA{
 
 Function StepB{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        Write-Log "No devices found. please run option 1, 2 or 3"
         Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
     }else{
         try{
@@ -499,8 +547,10 @@ Function StepB{
             $jsonOutput =  $vars.DevicesToCheck | ConvertTo-Json
             $jsonOutput | Out-File DuplicateDevices.json
             Clear-Host
+            Write-Log "Sucecssfully exported JSON file."
             Write-Host "Sucecssfully exported JSON file." -ForegroundColor Magenta
         }catch{
+            Write-Log "An Error occurred exporting JSON file"
             Write-Host "An Error occurred exporting JSON file" -ForegroundColor Red
             Write-Error $_
         }
@@ -508,7 +558,7 @@ Function StepB{
 }
 
 Function Step2{
-    
+    Write-Log "Prompt user to select CSV file from Windows Explorer"
     Write-Host "Select CSV file from Windows Explorer"
 
     #Get file from Windows Explorer
@@ -522,6 +572,7 @@ Function Step2{
 
     Clear-Host
     try{
+        Write-Log "Importing CSV file"
         Write-Host "Importing CSV file"
         $csvImport = Import-CSV $pathToCsv
 
@@ -531,20 +582,25 @@ Function Step2{
 
             $row++
             if([string]::IsNullOrEmpty($device.Computer) -or [string]::IsNullOrEmpty($device.CreatedDateTime) -or [string]::IsNullOrEmpty($device.ObjectID) -or [string]::IsNullOrEmpty($device.DeviceID)){
+                Write-Log "Error on row $row. Skipping row."
                 Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
                 if([string]::IsNullOrEmpty($device.Computer)){
+                    Write-Log "Computer is empty"
                     Write-Host "Computer is empty"
                 }
 
                 if([string]::IsNullOrEmpty($device.CreatedDateTime)){
+                    Write-Log "CreatedDateTime is empty"
                     Write-Host "CreatedDateTime is empty"
                 }
 
                 if([string]::IsNullOrEmpty($device.ObjectID)){
+                    Write-Log "ObjectID is empty"
                     Write-Host "ObjectID is empty"
                 }
 
                 if([string]::IsNullOrEmpty($device.DeviceID)){
+                    Write-Log "DeviceID is empty"
                     Write-Host "DeviceID is empty"
                 }
                 ''
@@ -577,8 +633,10 @@ Function Step2{
         }
 
         Clear-Host
+        Write-Log "Sucecssfully imported CSV file."
         Write-Host "Sucecssfully imported CSV file." -ForegroundColor Magenta
     }catch{
+        WRite-Log "An Error occurred reading CSV file"
         Write-Host "An Error occurred reading CSV file" -ForegroundColor Red
         Write-Error $_
     }
@@ -587,7 +645,7 @@ Function Step2{
 Function Step3{
     #Get file from Windows Explorer
     [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
-    
+    Write-Log "Prompt user to select JSON file from Windows Explorer"
     Write-Host "Select JSON file from Windows Explorer"
 
     $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -597,6 +655,7 @@ Function Step3{
     $pathToJson = $OpenFileDialog.filename
 
     Clear-Host
+    Write-Log "Importing JSON file"
     Write-Host "Importing JSON file"
 
     try{
@@ -619,21 +678,25 @@ Function Step3{
                 {
                     Write-Host "Error on json value." -ForegroundColor Red
                     if([string]::IsNullOrEmpty($dupDevice.displayName)){
+                        Write-Log "$($dupDevice.objectId): Computer is empty"
                         Write-Host "$($dupDevice.objectId): Computer is empty"
                         $errorImportingDevice++
                     }
         
                     if([string]::IsNullOrEmpty($dupDevice.createdDateTime)){
+                        Write-Log "$($dupDevice.displayName): CreatedDateTime is empty"
                         Write-Host "$($dupDevice.displayName): CreatedDateTime is empty"
                         $errorImportingDevice++
                     }
         
                     if([string]::IsNullOrEmpty($dupDevice.objectId)){
+                        Write-Log "$($dupDevice.displayName): ObjectID is empty"
                         Write-Host "$($dupDevice.displayName): ObjectID is empty"
                         $errorImportingDevice++
                     }
         
                     if([string]::IsNullOrEmpty($dupDevice.deviceId)){
+                        Write-Log "$($dupDevice.displayName): DeviceID is empty"
                         Write-Host "$($dupDevice.displayName): DeviceID is empty"
                         $errorImportingDevice++
                     }
@@ -670,13 +733,16 @@ Function Step3{
         }
 
         if($errorImportingDevice -gt 0){
+            Write-Log "There is missing data in some of the json values. Please fix source data and re-run"
             Write-Host "There is missing data in some of the json values. Please fix source data and re-run" -ForegroundColor Red
             $vars.DevicesToCheck = @{}
         }else{
             Clear-Host
+            Write-Log "Sucecssfully imported JSON file."
             Write-Host "Sucecssfully imported JSON file." -ForegroundColor Magenta
         }
     }catch{
+        Write-Log "An Error occurred reading JSON file" 
         Write-Host "An Error occurred reading JSON file" -ForegroundColor Red
         Write-Error $_
     }
@@ -684,6 +750,7 @@ Function Step3{
 
 Function Step4{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
+        Write-Log "No devices found. please run option 1, 2 or 3" 
         Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
     }else{
         $numDevicesToDelete = 0
@@ -822,7 +889,7 @@ Function menu{
     $Selector =''
     $Selector = Read-Host -Prompt "Please make a selection, and press Enter" 
 
-    While(($Selector -ne '1') -AND ($Selector -ne 'a') -AND ($Selector -ne 'b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '9')){
+    While(($Selector -ne '1') -AND ($Selector -ne 'a') -AND ($Selector -ne 'b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '9') -AND ($Selector -ne 'Debug')){
 
         $Selector = Read-Host -Prompt "Invalid input. Please make a correct selection from the above options, and press Enter" 
         
@@ -841,6 +908,7 @@ function RunSelection{
         Clear-Host
 
         ''
+        Write-Log "Menu Option: Get all Azure AD devices option has been chosen"
         Write-Host "Get all Azure AD devices option has been chosen" -BackgroundColor Black
         ''
         Invoke-CheckVariables
@@ -849,6 +917,7 @@ function RunSelection{
         Clear-Host
 
         ''
+        Write-Log "Menu Option: Save output as csv option has been chosen"
         Write-Host "Save output as csv option has been chosen" -BackgroundColor Black
         ''
         StepA
@@ -856,6 +925,7 @@ function RunSelection{
         Clear-Host
 
         ''
+        Write-Log "Menu Option: Save output as json option has been chosen"
         Write-Host "Save output as json option has been chosen" -BackgroundColor Black
         ''
         StepB
@@ -863,6 +933,7 @@ function RunSelection{
         Clear-Host
 
         ''
+        Write-Log "Menu Option: Import device from csv file option has been chosen"
         Write-Host "Import device from csv file option has been chosen" -BackgroundColor Black
         ''
         Step2
@@ -870,16 +941,21 @@ function RunSelection{
         Clear-Host
 
         ''
+        Write-Log "Menu Option: Import device from json file option has been chosen"
         Write-Host "Import device from json file option has been chosen" -BackgroundColor Black
         ''
         Step3
     }elseif($Selector -eq '4'){
         Clear-Host
         ''
+        Write-Log "Menu Option: Delete devices option has been chosen"
         Write-Host "Delete devices option has been chosen" -BackgroundColor Black
         ''
         Invoke-CheckVariables
         Step4
+    }elseif($Selector -eq 'Debug'){
+        Write-Log "Menu Option: Debug option chosen"
+        $vars.DelegateToken | ConvertTo-Json
     }elseif($Selector -eq '9'){
         break
     }
