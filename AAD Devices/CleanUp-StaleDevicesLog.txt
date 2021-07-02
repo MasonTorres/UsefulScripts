@@ -36,3 +36,159 @@
 2021-06-29 13:29:46Z Number of Unique devices by name: 537
 2021-06-29 13:30:05Z Menu Option: Save output as csv option has been chosen
 2021-06-29 13:31:56Z Sucecssfully exported CSV file.
+2021-06-29 15:28:13Z Menu Option: Get all Azure AD devices option has been chosen
+2021-06-29 15:28:13Z Getting new Acess Token using Refresh Token
+2021-06-29 15:28:13Z Success
+2021-06-29 15:28:14Z Getting devices...
+2021-06-29 15:28:14Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-06-29 15:28:14Z Body: 
+2021-06-29 15:29:05Z Number of Devices: 45253
+2021-06-29 15:29:05Z Number of Unique devices by name: 537
+2021-06-29 18:37:35Z Menu Option: Get all Azure AD devices option has been chosen
+2021-06-29 18:37:35Z Getting new Acess Token using Refresh Token
+2021-06-29 18:37:35Z Success
+2021-06-29 18:37:35Z Getting devices...
+2021-06-29 18:37:35Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-06-29 18:37:35Z Body: 
+2021-06-29 18:38:27Z Number of Devices: 45253
+2021-06-29 18:38:27Z Number of Unique devices by name: 537
+2021-06-29 18:38:48Z Menu Option: Debug option chosen
+2021-07-02 10:35:55Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:35:55Z Getting new Acess Token using Refresh Token
+2021-07-02 10:36:12Z Success
+2021-07-02 10:37:25Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:37:25Z Getting new Acess Token using Refresh Token
+2021-07-02 10:37:34Z Success
+2021-07-02 10:37:52Z Getting devices...
+2021-07-02 10:37:52Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:37:52Z Body: 
+2021-07-02 10:38:47Z Number of Devices: 45253
+2021-07-02 10:38:47Z Number of Unique devices by name: 537
+2021-07-02 10:40:54Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:40:54Z Getting new Acess Token using Refresh Token
+2021-07-02 10:41:44Z Getting devices...
+2021-07-02 10:41:44Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:41:44Z Body: 
+2021-07-02 10:41:45Z 45 mins elapsed. StartTime: Get-Date 07/02/2021 10:37:34
+2021-07-02 10:41:45Z Refreshing tokens within Graph call.
+2021-07-02 10:41:45Z Could not refresh token.
+2021-07-02 10:41:45Z The remote server returned an error: (400) Bad Request.
+2021-07-02 10:41:45Z Trying to get new token
+2021-07-02 10:42:03Z 45 mins elapsed. StartTime: Get-Date 07/02/2021 10:37:34
+2021-07-02 10:42:03Z Refreshing tokens within Graph call.
+2021-07-02 10:42:03Z Could not refresh token.
+2021-07-02 10:42:03Z The remote server returned an error: (400) Bad Request.
+2021-07-02 10:42:03Z Trying to get new token
+2021-07-02 10:42:17Z 45 mins elapsed. StartTime: Get-Date 07/02/2021 10:37:34
+2021-07-02 10:42:17Z Refreshing tokens within Graph call.
+2021-07-02 10:42:17Z Could not refresh token.
+2021-07-02 10:42:17Z The remote server returned an error: (400) Bad Request.
+2021-07-02 10:42:17Z Trying to get new token
+2021-07-02 10:43:53Z 45 mins elapsed. StartTime: Get-Date 07/02/2021 10:37:34
+2021-07-02 10:43:53Z Refreshing tokens within Graph call.
+2021-07-02 10:43:53Z Success
+2021-07-02 10:44:42Z Number of Devices: 45253
+2021-07-02 10:44:42Z Number of Unique devices by name: 537
+2021-07-02 10:44:47Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:44:47Z Getting new Acess Token using Refresh Token
+2021-07-02 10:45:00Z Success
+2021-07-02 10:45:00Z Getting devices...
+2021-07-02 10:45:00Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:45:00Z Body: 
+2021-07-02 10:45:30Z Evaluating devices. This may take some time.
+2021-07-02 10:45:54Z Evaluating devices. Complete.
+2021-07-02 10:45:54Z Number of Devices: 45253
+2021-07-02 10:45:54Z Number of Unique devices by name: 537
+2021-07-02 10:53:53Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:53:53Z Getting new Acess Token using Refresh Token
+2021-07-02 10:54:06Z Success
+2021-07-02 10:54:06Z Getting devices...
+2021-07-02 10:54:06Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:54:06Z Body: 
+2021-07-02 10:54:37Z Evaluating devices. This may take some time.
+2021-07-02 10:55:00Z Evaluating devices. Complete.
+2021-07-02 10:55:00Z Number of Devices: 45253
+2021-07-02 10:55:00Z Number of Unique devices by name: 537
+2021-07-02 10:55:14Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:55:14Z Getting new Acess Token using Refresh Token
+2021-07-02 10:55:14Z Success
+2021-07-02 10:55:14Z Getting devices...
+2021-07-02 10:55:14Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:55:14Z Body: 
+2021-07-02 10:55:21Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:55:21Z Getting new Acess Token using Refresh Token
+2021-07-02 10:55:30Z Success
+2021-07-02 10:55:30Z Getting devices...
+2021-07-02 10:55:30Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:55:30Z Body: 
+2021-07-02 10:56:01Z Evaluating devices. This may take some time.
+2021-07-02 10:56:22Z \nEvaluating devices. Complete.
+2021-07-02 10:56:22Z Number of Devices: 45253
+2021-07-02 10:56:22Z Number of Unique devices by name: 537
+2021-07-02 10:56:42Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:56:42Z Getting new Acess Token using Refresh Token
+2021-07-02 10:56:43Z Success
+2021-07-02 10:56:43Z Getting devices...
+2021-07-02 10:56:43Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:56:43Z Body: 
+2021-07-02 10:56:46Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:56:46Z Getting new Acess Token using Refresh Token
+2021-07-02 10:56:58Z Success
+2021-07-02 10:56:58Z Getting devices...
+2021-07-02 10:56:58Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:56:58Z Body: 
+2021-07-02 10:57:28Z Evaluating devices. This may take some time.
+2021-07-02 10:57:50Z 
+Evaluating devices. Complete.
+2021-07-02 10:57:50Z Number of Devices: 45253
+2021-07-02 10:57:50Z Number of Unique devices by name: 537
+2021-07-02 10:59:47Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 10:59:47Z Getting new Acess Token using Refresh Token
+2021-07-02 10:59:58Z Success
+2021-07-02 10:59:59Z Getting devices...
+2021-07-02 10:59:59Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 10:59:59Z Body: 
+2021-07-02 11:00:30Z Evaluating devices. This may take some time.
+2021-07-02 11:00:52Z Evaluating devices. Complete.
+2021-07-02 11:00:52Z Number of Devices: 45253
+2021-07-02 11:00:52Z Number of Unique devices by name: 537
+2021-07-02 11:00:58Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 11:00:58Z Getting new Acess Token using Refresh Token
+2021-07-02 11:01:09Z Success
+2021-07-02 11:01:09Z Getting devices...
+2021-07-02 11:01:09Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 11:01:09Z Body: 
+2021-07-02 11:01:40Z Evaluating devices. This may take some time.
+2021-07-02 11:02:48Z Evaluating devices. Complete.
+2021-07-02 11:02:48Z Number of Devices: 45253
+2021-07-02 11:02:48Z Number of Unique devices by name: 537
+2021-07-02 11:09:26Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 11:09:26Z Getting new Acess Token using Refresh Token
+2021-07-02 11:09:26Z Success
+2021-07-02 11:09:26Z Getting devices...
+2021-07-02 11:09:26Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 11:09:26Z Body: 
+2021-07-02 11:09:57Z Evaluating devices. This may take some time.
+2021-07-02 11:11:29Z Evaluating devices. Complete.
+2021-07-02 11:11:29Z Number of Devices: 45253
+2021-07-02 11:11:29Z Number of Unique devices by name: 537
+2021-07-02 11:30:43Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 11:30:43Z Getting new Acess Token using Refresh Token
+2021-07-02 11:31:06Z Success
+2021-07-02 11:31:06Z Getting devices...
+2021-07-02 11:31:06Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 11:31:06Z Body: 
+2021-07-02 11:31:35Z Evaluating devices. This may take some time.
+2021-07-02 11:32:33Z Evaluating devices. Complete.
+2021-07-02 11:32:33Z Number of Devices: 45253
+2021-07-02 11:32:33Z Number of Unique devices by name: 537
+2021-07-02 11:40:07Z Menu Option: Get all Azure AD devices option has been chosen
+2021-07-02 11:40:07Z Getting new Acess Token using Refresh Token
+2021-07-02 11:40:18Z Success
+2021-07-02 11:40:18Z Getting devices...
+2021-07-02 11:40:18Z Entering Graph call Uri: https://graph.microsoft.com/beta/devices?$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid Method: GET
+2021-07-02 11:40:18Z Body: 
+2021-07-02 11:40:48Z Evaluating devices. This may take some time.
+2021-07-02 11:41:46Z Evaluating devices. Complete.
+2021-07-02 11:41:46Z Number of Devices: 45253
+2021-07-02 11:41:46Z Number of Unique devices by name: 537

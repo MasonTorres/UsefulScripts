@@ -444,10 +444,16 @@ Function Step1{
     # Get all risky users from Microsoft Graph API
     $vars.AllDevices = Get-Devices -Token $vars.DelegateToken
 
+    $deviceCheckCount = 0
+    Write-Log "Evaluating devices. This may take some time."
+    Write-Host "`nEvaluating devices. This may take some time. Please do not close the terminal session."
     # Create a Hashtable with unique device names, then add any duplicate devices as child objects.
     $vars.DevicesToCheck = @{}
     foreach($device in $vars.AllDevices){
-        
+        $deviceCheckCount++
+        $percent = [math]::Round($(($deviceCheckCount / $($vars.AllDevices.count)) * 100),2)
+        Write-Host -NoNewline "`rEvaluating devices $deviceCheckCount / $($vars.AllDevices.count) $percent% "
+
         if($vars.DevicesToCheck[$device.displayName]){
             
             $vars.DevicesToCheck[$device.displayName] +=  @{
@@ -492,6 +498,8 @@ Function Step1{
         }
         $vars.DevicesToCheck[$device.name][$latestActivityID].deleteStatus = "Do Not Delete"
     }
+
+    Write-Log "Evaluating devices. Complete."
 
     ''
     Write-Log "Number of Devices: $($vars.AllDevices.count)"
