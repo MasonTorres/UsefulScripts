@@ -45,6 +45,8 @@ $vars = @{
     AllDevices = @{}
     DevicesToCheck = @{}
 
+    AllUsers = @{}
+
     LogFile = "CleanUp-StaleDevicesLog.txt"
 }
 
@@ -195,11 +197,17 @@ function Invoke-MSGraph{
          [Parameter(Mandatory=$false)]
          [string] $Body,
          [Parameter(Mandatory=$false)]
-         [bool] $ShowProgress = $true
+         [bool] $ShowProgress = $true,
+         [Parameter(Mandatory=$false)]
+         [bool] $useConsistencyLevel = $false,
+         [Parameter(Mandatory=$false)]
+         [bool] $DebugLots = $false
     )
 
     Write-Log "Entering Graph call Uri: $Uri Method: $Method"
-    Write-Log "Body: $body"
+    if($DebugLots){
+        Write-Log "Body: $body"
+    }
 
     $ReturnValue = $null
     $OneSuccessfulFetch = $null
@@ -208,12 +216,20 @@ function Invoke-MSGraph{
     $ResultNextLink = $Uri
     $batchCount = 0
 
+    $headers = @{
+        Authorization = "Bearer $($token.AccessToken)"
+    }
+
+    if($useConsistencyLevel -eq $true){
+        $headers.add("ConsistencyLevel", "eventual");
+    }
+
     while($null -ne $ResultNextLink){
         Try {
             if($Body){
-                $Result = Invoke-RestMethod -Method $Method -uri $ResultNextLink -ContentType "application/json" -Headers @{Authorization = "Bearer $($token.AccessToken)"} -Body $Body -ErrorAction Stop
+                $Result = Invoke-RestMethod -Method $Method -uri $ResultNextLink -ContentType "application/json" -Headers $headers -Body $Body -ErrorAction Stop
             }else{
-                $Result = Invoke-RestMethod -Method $Method -uri $ResultNextLink -ContentType "application/json" -Headers @{Authorization = "Bearer $($token.AccessToken)"} -ErrorAction Stop 
+                $Result = Invoke-RestMethod -Method $Method -uri $ResultNextLink -ContentType "application/json" -Headers $headers -ErrorAction Stop 
             }
             $ResultNextLink = $Result."@odata.nextLink"
             $ReturnValue += $Result.value
@@ -221,6 +237,9 @@ function Invoke-MSGraph{
             $batchCount++
             if($ShowProgress -eq $true){
                 Write-Host -NoNewline "`rRecevied pages from Microsoft Graph API $batchCount"
+            }
+            if($result.responses){
+                $ReturnValue = $result
             }
         } 
         Catch [System.Net.WebException] {
@@ -342,12 +361,27 @@ function Get-Devices{
          [hashtable] $Token
     )
 
-    $uri = "https://graph.microsoft.com/beta/devices?`$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid"
+    $uri = "https://graph.microsoft.com/beta/devices?`$top=999&select=registrationDateTime,createdDateTime,displayName,id,deviceid,deviceOwnership,approximateLastSignInDateTime"
     $method = "GET"
 
-    $Devices = Invoke-MSGraph -Token $Token -Uri $uri -Method $method 
+    $Devices = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -DebugLots $true
 
     return $Devices
+}
+
+function Get-Users{
+    Param
+    (
+         [Parameter(Mandatory=$true, Position=0)]
+         [hashtable] $Token
+    )
+
+    $uri = "https://graph.microsoft.com/beta/users?$top=999&select=userprincipalname,id"
+    $method = "GET"
+
+    $Users = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -DebugLots $true
+
+    return $Users
 }
 
 # Function: Delete a signle device using Microsoft Graph API
@@ -362,26 +396,28 @@ function Invoke-DeleteDevice{
     $uri = "https://graph.microsoft.com/beta/devices/$DeviceID"
     $method = "DELETE"
 
-    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method
+    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -DebugLots $false 
 
     return $Result
 }
 
 # Function: Delete a signle device using Microsoft Graph API
-function Invoke-DeleteDevicesBatch{
+function Invoke-BatchRequest{
     Param
     (
          [Parameter(Mandatory=$true, Position=0)]
          [hashtable] $Token,
-         [hashtable] $batchRequest
+         [hashtable] $batchRequest,
+         [Parameter(Mandatory=$false)]
+         [bool] $useConsistencyLevel = $false
     )
 
-    $uri = "https://graph.microsoft.com/v1.0/`$batch"
+    $uri = "https://graph.microsoft.com/beta/`$batch"
     $method = "POST"
 
     $body = $batchRequest | convertTo-Json
 
-    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -Body $body -ShowProgress $false
+    $Result = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -Body $body -ShowProgress $false -useConsistencyLevel $useConsistencyLevel -DebugLots $false
 
     return $Result
 }
@@ -845,13 +881,137 @@ Function Step4{
 
                         # Execute batch job and delete devices
                         $batchRequest = @{"requests" = $batch}
-                        $deleteResult = Invoke-DeleteDevicesBatch -Token $vars.DelegateToken -batchRequest $batchRequest
+                        $deleteResult = Invoke-BatchRequest -Token $vars.DelegateToken -batchRequest $batchRequest
                         
                     }
                 }
             }
         }
     }
+}
+
+#User specific functions
+Function Step5{
+# Get our Access Token for Microsoft Graph API
+    try{
+        $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+        $vars.ScriptStartTime = Get-Date
+        
+    }catch{
+        $e = $_
+        $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+    }
+
+    ''
+    Write-Log "Getting users..."
+    Write-Host "Getting users..."
+
+    # Get all users from Microsoft Graph API
+    $vars.AllUsers = Get-Users -Token $vars.DelegateToken
+
+    $AllUsersHash = @{}
+    $vars.AllUsers | ForEach-Object{
+        $AllUsersHash[$_.id] = $_.userprincipalname 
+    }
+
+    # Create the graph calls for each device and add to a list (batch).
+    $userCount = 0
+    $batchCount = 1
+    [System.Collections.ArrayList]$batchRequestItemsArray = @()
+    $batchRequestItems = @()
+    $AllUsersCount = $vars.AllUsers.count
+    Write-Log "Number of users: $AllUsersCount"
+    Write-Log "Creating Batches..."
+    foreach($user in $vars.AllUsers){
+        $percent = [math]::Round($(($userCount / $AllUsersCount) * 100),2)
+        $userCount++
+        Write-Host -NoNewline "`rCreating batches of users $userCount / $AllUsersCount $percent %"
+
+        $details = [ordered]@{}
+        $details.add("id", $batchCount)
+        $details.add("method", "GET")
+        $details.add("url", "/devices?`$search=""physicalIds:[USER-HWID]:$($user.id)""&`$select=registrationDateTime,createdDateTime,displayName,id,deviceid,approximateLastSignInDateTime,physicalIds&ConsistencyLevel=eventual")
+        $batchRequestItems += New-Object PSObject $details
+        $batchCount++
+
+        if($userCount % 20 -eq 0){
+            $null = $batchRequestItemsArray.add($batchRequestItems)
+            $batchRequestItems = @()
+            $batchCount = 1
+        }elseif($userCount -eq $AllUsersCount){ # Make sure we get the last batch which may have less than 20 items
+            $null = $batchRequestItemsArray.add($batchRequestItems)
+            $batchRequestItems = @()
+        }
+    }
+
+    $DeviceAndTheirUsers = @{}
+    $UsersWithNoDevices = @{}
+    $batchRunCount = 0
+    $batchRequestItemsArrayCount = $batchRequestItemsArray.count
+    Write-Log "Executing batches..."
+    Write-Log "Number of batches: $batchRequestItemsArrayCount"
+    # Loop through all the batches and execute batch request
+    foreach($batch in $batchRequestItemsArray){
+        $percent = [math]::Round($(($batchRunCount / $($batchRequestItemsArrayCount)) * 100),2)
+        Write-Host -NoNewline "`rRunning batch  $batchRunCount / $($batchRequestItemsArrayCount) $percent %"
+        $batchRunCount++
+
+        if($batch.count -gt 0){
+            #refresh token after 45mins time has elapsed
+            if(( Get-Date $vars.ScriptStartTime).AddMinutes(45) -lt (Get-Date)){
+                Write-Output "Refreshing tokens" 
+
+                try{
+                    $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret -refreshToken $vars.DelegateToken.RefreshToken
+                    $vars.ScriptStartTime = Get-Date
+                    
+                }catch{
+                    $e = $_
+                    $vars.DelegateToken = Get-DelegateToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                }
+            }
+
+            # Execute batch job
+            $batchRequest = @{"requests" = $batch}
+            $batchResult = Invoke-BatchRequest -Token $vars.DelegateToken -batchRequest $batchRequest -useConsistencyLevel $true  #$batchRequest
+            
+            # Loop through Graph results 
+            foreach($individualResult in $batchResult.responses){
+
+                if($individualResult.status -eq 200){
+                    # Devices found for given user
+                    if($individualResult.body.value.count -gt 0){
+                        write-host "has value"
+                        foreach($device in $individualResult.body.value){
+                            $userId = $($device.physicalIds[0]).split(":")[1]
+                           
+                            $DeviceAndTheirUsers[$device.deviceId] = @{
+                                deviceId = $device.deviceId
+                                registrationDateTime = $device.registrationDateTime
+                                createdDateTime = $device.createdDateTime
+                                approximateLastSignInDateTime = $device.approximateLastSignInDateTime
+                                userprincipalname = $AllUsersHash[$userId]
+                            }
+                        }
+                    }else{
+                        foreach($b in $batchRequest.requests){
+                            if($b.id -eq $individualResult.id){
+                                $userId = $($($b.url).split('"')[1]).split(":")[2]
+                            }
+                        }
+                        $UsersWithNoDevices[$userId] = @{
+                            userId = $userId
+                            userprincipalname = $AllUsersHash[$userId]
+                        }
+                    }                    
+                }
+            }
+        }
+    }
+    
+    # Create an array of batches
+    # Each batch contains up to 20 Microsoft Graph API requests https://docs.microsoft.com/en-us/graph/json-batching
+    
 }
 
 Function menu{
@@ -891,13 +1051,15 @@ Function menu{
     ''
     Write-Host "Enter (4) to delete devices" -ForegroundColor $forgroundColour
     ''
+    Write-Host "Enter (5) to get all Azure AD users" -ForegroundColor $forgroundColour
+    ''
     Write-Host "Enter (9) to Quit" -ForegroundColor Green
     ''
 
     $Selector =''
     $Selector = Read-Host -Prompt "Please make a selection, and press Enter" 
 
-    While(($Selector -ne '1') -AND ($Selector -ne 'a') -AND ($Selector -ne 'b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '9') -AND ($Selector -ne 'Debug')){
+    While(($Selector -ne '1') -AND ($Selector -ne 'a') -AND ($Selector -ne 'b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '5') -AND ($Selector -ne '9') -AND ($Selector -ne 'Debug')){
 
         $Selector = Read-Host -Prompt "Invalid input. Please make a correct selection from the above options, and press Enter" 
         
@@ -961,6 +1123,14 @@ function RunSelection{
         ''
         Invoke-CheckVariables
         Step4
+    }elseif($Selector -eq '5'){
+        Clear-Host
+        ''
+        Write-Log "Menu Option: Get all Azure AD Users has been chosen"
+        Write-Host "Get all Azure AD Users has been chosen" -BackgroundColor Black
+        ''
+        Invoke-CheckVariables
+        Step5
     }elseif($Selector -eq 'Debug'){
         Write-Log "Menu Option: Debug option chosen"
         $vars.DelegateToken | ConvertTo-Json
