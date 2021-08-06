@@ -306,20 +306,25 @@ $Groups = Get-Groups -Token $vars.token
 $output = @()
 $groupProcessCount = 0
 $AllGroupsCount = $Groups.count
+
+Set-Content GroupsWithMembershipCount.csv "displayname,id,GroupMemberCount"
+
 foreach($group in $Groups){
     $percent = [math]::Round($(($groupProcessCount / $AllGroupsCount) * 100),2)
     Write-Host -NoNewline "`rCreating batches of users $groupProcessCount / $AllGroupsCount $percent %"
 
     $groupCount = Get-GroupsMemberCount -Token $vars.Token -GroupId $group.id
 
-    $details = [ordered]@{}
-    $details.add("displayName",$group.displayName)
-    $details.add("id",$group.id)
-    $details.add("GroupMemberCount",$groupCount)
-    $output+= New-Object PSObject -Property $details
+    # $details = [ordered]@{}
+    # $details.add("displayName",$group.displayName)
+    # $details.add("id",$group.id)
+    # $details.add("GroupMemberCount",$groupCount)
+    # $output+= New-Object PSObject -Property $details
     
+    ### Using Add-Content instead of an array to avoid high memory consumption when a large number of groups are processed
+    Add-Content GroupsWithMembershipCount2.csv "$($group.displayName),$($group.id),$groupCount"
     $groupProcessCount++
 }
 
-$output | Export-csv -NoTypeInformation GroupsWithMembershipCount.csv
+# $output | Export-csv -NoTypeInformation GroupsWithMembershipCount.csv
 
