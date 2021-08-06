@@ -1,3 +1,32 @@
+#  Disclaimer:    This code is not supported under any Microsoft standard support program or service.
+#                 This code and information are provided "AS IS" without warranty of any kind, either
+#                 expressed or implied. The entire risk arising out of the use or performance of the
+#                 script and documentation remains with you. Furthermore, Microsoft or the author
+#                 shall not be liable for any damages you may sustain by using this information,
+#                 whether direct, indirect, special, incidental or consequential, including, without
+#                 limitation, damages for loss of business profits, business interruption, loss of business
+#                 information or other pecuniary loss even if it has been advised of the possibility of
+#                 such damages. Read all the implementation and usage notes thoroughly.
+
+# 
+# Create an App Registration 
+# Assign Application permissions: 	Group.Read.All https://docs.microsoft.com/en-us/graph/api/resources/group?view=graph-rest-1.0
+# Create Application secret
+# Set the App Registration to Public
+# Update $vars variable below: ClientSecret, ClientID and TenantID 
+
+# This script will delete devices from Azure AD.
+# App ClientSecret, ClientID and TenantID are needed for delegate token refresh
+
+param (
+    [Parameter( ValueFromPipeline=$true,
+                ValueFromPipelineByPropertyName=$true,
+                HelpMessage="Get group membership count")]
+    [string]$ClientID = "",
+    [string]$ClientSecret = "",
+    [string]$TenantID = ""
+)
+
 # Variable: Store variables used throughout this script
 $vars = @{
     # Used to generate an Access Token to query Microsoft Graph API.
