@@ -322,7 +322,7 @@ foreach($group in $Groups){
     # $output+= New-Object PSObject -Property $details
     
     ### Using Add-Content instead of an array to avoid high memory consumption when a large number of groups are processed
-    Add-Content GroupsWithMembershipCount2.csv "$($group.displayName),$($group.id),$groupCount"
+    Add-Content GroupsWithMembershipCount.csv "$($group.displayName),$($group.id),$groupCount"
     $groupProcessCount++
 }
 
