@@ -115,11 +115,10 @@ function Invoke-MSGraph{
          [bool] $DebugLots = $false
     )
 
-    Write-Log "Entering Graph call Uri: $Uri Method: $Method"
     if($DebugLots){
+        Write-Log "Entering Graph call Uri: $Uri Method: $Method"
         Write-Log "Body: $body"
     }
-
     $ReturnValue = $null
     $OneSuccessfulFetch = $null
     $PermissionCheck = $false
@@ -247,11 +246,13 @@ function Invoke-MSGraph{
 
             try{
                 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
+                $vars.ScriptStartTime = Get-Date
             }catch{
                 Write-Log "Could not get new client credential token."
                 Write-Log "Trying again."
                 $vars.Token.AccessToken = Get-AppToken -tenantId $vars.Token.TenantID -clientId $vars.Token.ClientID -clientSecret $vars.Token.ClientSecret
             }
+
         }
     }
 
@@ -285,7 +286,7 @@ function Get-GroupsMemberCount{
     $uri = "https://graph.microsoft.com/v1.0/groups/$GroupId/members/`$count"
     $method = "GET"
 
-    $Group = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -DebugLots $true -useConsistencyLevel $true -ShowProgress $false
+    $Group = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -DebugLots $false -useConsistencyLevel $true -ShowProgress $false
 
     return $Group
 }
@@ -303,11 +304,11 @@ try{
 $Groups = Get-Groups -Token $vars.token 
 
 #Loop through groups and get their membership count
-$output = @()
 $groupProcessCount = 0
 $AllGroupsCount = $Groups.count
 
-Set-Content GroupsWithMembershipCount.csv "displayname,id,GroupMemberCount"
+$output = [System.Text.StringBuilder]::new()
+[void]$output.AppendLine( "displayname,id,GroupMemberCount" )
 
 foreach($group in $Groups){
     $percent = [math]::Round($(($groupProcessCount / $AllGroupsCount) * 100),2)
@@ -315,16 +316,9 @@ foreach($group in $Groups){
 
     $groupCount = Get-GroupsMemberCount -Token $vars.Token -GroupId $group.id
 
-    # $details = [ordered]@{}
-    # $details.add("displayName",$group.displayName)
-    # $details.add("id",$group.id)
-    # $details.add("GroupMemberCount",$groupCount)
-    # $output+= New-Object PSObject -Property $details
-    
     ### Using Add-Content instead of an array to avoid high memory consumption when a large number of groups are processed
-    Add-Content GroupsWithMembershipCount.csv "$($group.displayName),$($group.id),$groupCount"
+    [void]$output.AppendLine("$($group.displayName),$($group.id),$groupCount")
     $groupProcessCount++
 }
 
-# $output | Export-csv -NoTypeInformation GroupsWithMembershipCount.csv
-
+$output.ToString() | Out-File GroupsWithMembershipCount.csv
