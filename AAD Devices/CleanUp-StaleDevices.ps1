@@ -45,7 +45,12 @@ $vars = @{
     AllDevices = @{}
     DevicesToCheck = @{}
 
-    AllUsers = @{}
+    AllUsers = @{
+        FromGraph = @{}
+        WithADevice = @{}
+        WithNoDevice = @{}
+    }
+    
 
     LogFile = "CleanUp-StaleDevicesLog.txt"
 }
@@ -376,7 +381,7 @@ function Get-Users{
          [hashtable] $Token
     )
 
-    $uri = "https://graph.microsoft.com/beta/users?$top=999&select=userprincipalname,id"
+    $uri = "https://graph.microsoft.com/beta/users?`$top=999&select=userprincipalname,id"
     $method = "GET"
 
     $Users = Invoke-MSGraph -Token $Token -Uri $uri -Method $method -DebugLots $true
@@ -545,31 +550,41 @@ Function Step1{
     ''
 }
 
-Function StepA{
+Function Step1A{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
         Write-Log "No devices found. please run option 1, 2 or 3"
         Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
     }else{
         try{
             # Export the hashtable as a CSV file
-            $CsvOutput = @()
+            # $CsvOutput = @()
+            $CsvOutput = [System.Text.StringBuilder]::new()
+            [void]$CsvOutput.AppendLine( "Computer,DeleteStatus,CreatedDateTime,ObjectID,DeviceID,userPrincipalName" )
+            $count = 0;
+            $countTotal = $vars.DevicesToCheck.count
+               
             foreach($device in $vars.DevicesToCheck.GetEnumerator()){
-                
+                Write-Host -NoNewline "`rCreating CSV export devices  $count / $countTotal"
+                $count++
+
                 foreach($deviceRegistration in $device.value){
 
                     foreach($identifiedDevice in $deviceRegistration.GetEnumerator()){
-                        $details = [ordered]@{}
-                        $details.add("Computer", $device.Name)
-                        $details.add("DeleteStatus", $identifiedDevice.value.deleteStatus)
-                        $details.add("CreatedDateTime", $identifiedDevice.value.createdDateTime)
-                        $details.add("ObjectID", $identifiedDevice.value.objectId)
-                        $details.add("DeviceID", $identifiedDevice.value.deviceId)
+                        # $details = [ordered]@{}
+                        # $details.add("Computer", $device.Name)
+                        # $details.add("DeleteStatus", $identifiedDevice.value.deleteStatus)
+                        # $details.add("CreatedDateTime", $identifiedDevice.value.createdDateTime)
+                        # $details.add("ObjectID", $identifiedDevice.value.objectId)
+                        # $details.add("DeviceID", $identifiedDevice.value.deviceId)
 
-                        $CsvOutput+= New-Object PSObject -Property $details
+                        # $CsvOutput+= New-Object PSObject -Property $details
+
+                        [void]$CsvOutput.AppendLine( "$($device.Name),$($identifiedDevice.value.deleteStatus),$($identifiedDevice.value.createdDateTime),$($identifiedDevice.value.objectId),$($identifiedDevice.value.deviceId),$($identifiedDevice.value.userPrincipalName)" )
                     }
                 }
             }
-            $CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
+            # $CsvOutput | Export-CSV DuplicateDevices.csv -NoTypeInformation
+            $CsvOutput.ToString() | Out-File DuplicateDevices.csv -Encoding ascii
             Clear-Host
             Write-Log "Sucecssfully exported CSV file."
             Write-Host "Sucecssfully exported CSV file." -ForegroundColor Magenta
@@ -581,7 +596,7 @@ Function StepA{
     }
 }
 
-Function StepB{
+Function Step1B{
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
         Write-Log "No devices found. please run option 1, 2 or 3"
         Write-Host "No devices found. please run option 1, 2 or 3" -ForegroundColor Yellow
@@ -659,6 +674,7 @@ Function Step2{
                             createdDateTime = $device.createdDateTime
                             displayName = $device.Computer
                             deleteStatus = $device.DeleteStatus
+                            userPrincipalName = $device.userPrincipalName
                         }
                     }
                 }else{
@@ -670,6 +686,7 @@ Function Step2{
                             createdDateTime = $device.createdDateTime
                             displayName = $device.Computer
                             deleteStatus = $device.DeleteStatus
+                            userPrincipalName = $device.userPrincipalName
                         }
                     })
                 }
@@ -756,6 +773,7 @@ Function Step3{
                             registrationDateTime = $dupDevice.registrationDateTime
                             deviceId = $dupDevice.deviceId
                             deleteStatus = $dupDevice.deleteStatus
+                            userPrincipalName = $device.userPrincipalName
                         }
                     }
                     }else{
@@ -767,6 +785,7 @@ Function Step3{
                                 registrationDateTime = $dupDevice.registrationDateTime
                                 deviceId = $dupDevice.deviceId
                                 deleteStatus = $dupDevice.deleteStatus
+                                userPrincipalName = $device.userPrincipalName
                             }
                         })
                     }
@@ -907,10 +926,10 @@ Function Step5{
     Write-Host "Getting users..."
 
     # Get all users from Microsoft Graph API
-    $vars.AllUsers = Get-Users -Token $vars.DelegateToken
+    $vars.AllUsers.FromGraph = Get-Users -Token $vars.DelegateToken
 
     $AllUsersHash = @{}
-    $vars.AllUsers | ForEach-Object{
+    $vars.AllUsers.FromGraph | ForEach-Object{
         $AllUsersHash[$_.id] = $_.userprincipalname 
     }
 
@@ -919,10 +938,11 @@ Function Step5{
     $batchCount = 1
     [System.Collections.ArrayList]$batchRequestItemsArray = @()
     $batchRequestItems = @()
-    $AllUsersCount = $vars.AllUsers.count
+    $AllUsersCount = $vars.AllUsers.FromGraph.count
+    Write-Host "`nCreating Batches..."
     Write-Log "Number of users: $AllUsersCount"
     Write-Log "Creating Batches..."
-    foreach($user in $vars.AllUsers){
+    foreach($user in $vars.AllUsers.FromGraph){
         $percent = [math]::Round($(($userCount / $AllUsersCount) * 100),2)
         $userCount++
         Write-Host -NoNewline "`rCreating batches of users $userCount / $AllUsersCount $percent %"
@@ -930,7 +950,8 @@ Function Step5{
         $details = [ordered]@{}
         $details.add("id", $batchCount)
         $details.add("method", "GET")
-        $details.add("url", "/devices?`$search=""physicalIds:[USER-HWID]:$($user.id)""&`$select=registrationDateTime,createdDateTime,displayName,id,deviceid,approximateLastSignInDateTime,physicalIds&ConsistencyLevel=eventual")
+        #$details.add("url", "/devices?`$search=""physicalIds:[USER-HWID]:$($user.id)""&`$select=registrationDateTime,createdDateTime,displayName,id,deviceid,approximateLastSignInDateTime,physicalIds&ConsistencyLevel=eventual")
+        $details.add("url", "/users/$($user.id)/registeredDevices?`$select=registrationDateTime,createdDateTime,displayName,id,deviceid,approximateLastSignInDateTime,physicalIds,displayName")
         $batchRequestItems += New-Object PSObject $details
         $batchCount++
 
@@ -948,12 +969,13 @@ Function Step5{
     $UsersWithNoDevices = @{}
     $batchRunCount = 0
     $batchRequestItemsArrayCount = $batchRequestItemsArray.count
+    Write-Host "`nExecuting batches..."
     Write-Log "Executing batches..."
     Write-Log "Number of batches: $batchRequestItemsArrayCount"
     # Loop through all the batches and execute batch request
     foreach($batch in $batchRequestItemsArray){
-        $percent = [math]::Round($(($batchRunCount / $($batchRequestItemsArrayCount)) * 100),2)
-        Write-Host -NoNewline "`rRunning batch  $batchRunCount / $($batchRequestItemsArrayCount) $percent %"
+        $percent = [math]::Round($(($batchRunCount / $batchRequestItemsArrayCount) * 100),2)
+        Write-Host -NoNewline "`rRunning batch  $batchRunCount / $batchRequestItemsArrayCount $percent %"
         $batchRunCount++
 
         if($batch.count -gt 0){
@@ -981,22 +1003,23 @@ Function Step5{
                 if($individualResult.status -eq 200){
                     # Devices found for given user
                     if($individualResult.body.value.count -gt 0){
-                        write-host "has value"
+                        
                         foreach($device in $individualResult.body.value){
                             $userId = $($device.physicalIds[0]).split(":")[1]
                            
-                            $DeviceAndTheirUsers[$device.deviceId] = @{
-                                deviceId = $device.deviceId
+                            $DeviceAndTheirUsers[$device.id] = @{
+                                deviceId = $device.id
                                 registrationDateTime = $device.registrationDateTime
                                 createdDateTime = $device.createdDateTime
                                 approximateLastSignInDateTime = $device.approximateLastSignInDateTime
                                 userprincipalname = $AllUsersHash[$userId]
+                                displayName = $device.displayName
                             }
                         }
                     }else{
                         foreach($b in $batchRequest.requests){
                             if($b.id -eq $individualResult.id){
-                                $userId = $($($b.url).split('"')[1]).split(":")[2]
+                                $userId = $($b.url).split('/')[2]
                             }
                         }
                         $UsersWithNoDevices[$userId] = @{
@@ -1009,12 +1032,393 @@ Function Step5{
         }
     }
     
-    # Create an array of batches
-    # Each batch contains up to 20 Microsoft Graph API requests https://docs.microsoft.com/en-us/graph/json-batching
+    $vars.AllUsers.WithNoDevice = $UsersWithNoDevices
+    $vars.AllUsers.WithADevice = $DeviceAndTheirUsers
+
+}
+
+Function Step5A{
+    if(([string]::IsNullOrEmpty($vars.AllUsers.WithNoDevice) -or ($vars.AllUsers.WithNoDevice.count -eq 0) ) -and ([string]::IsNullOrEmpty($vars.AllUsers.WithADevice) -or ($vars.AllUsers.WithADevice.count -eq 0))){
+        Write-Log "No users found. Please run option 5"
+        Write-Host "No users found. Please run option 5" -ForegroundColor Yellow
+    }else{
+        try{
+            # Export the hashtable as a CSV file
+            $CsvOutputUsersWithNoDevice = [System.Text.StringBuilder]::new()
+            [void]$CsvOutputUsersWithNoDevice.AppendLine( "UserId,UserPrincipalName" )
+            $countNoDevice = 0;
+            $countNoDeviceTotal = $vars.AllUsers.WithNoDevice.count
+            foreach($user in $vars.AllUsers.WithNoDevice.GetEnumerator()){
+                Write-Host -NoNewline "`rCreating CSV export user with no device  $countNoDevice / $countNoDeviceTotal"
+                $countNoDevice++
+
+                [void]$CsvOutputUsersWithNoDevice.AppendLine("$($user.value.userId),$($user.value.userprincipalname)")
+            }
+            $CsvOutputUsersWithNoDevice.ToString() | Out-File DuplicateDevices-AllUsersWithNoDevices.csv -Encoding ascii
+
+            $CsvOutputUsersWithADevice = [System.Text.StringBuilder]::new()
+            [void]$CsvOutputUsersWithADevice.AppendLine( "UserPrincipalName,approximateLastSignInDateTime,createdDateTime,deviceId,registrationDateTime,displayName" )
+            $countADevice = 0;
+            $countADeviceTotal = $vars.AllUsers.WithADevice.count
+            foreach($user in $vars.AllUsers.WithADevice.GetEnumerator()){
+                Write-Host -NoNewline "`rCreating CSV export users with a device $countADevice / $countADeviceTotal"
+                $countADevice++
+
+                [void]$CsvOutputUsersWithADevice.AppendLine("$($user.value.UserPrincipalName),$($user.value.approximateLastSignInDateTime),$($user.value.createdDateTime),$($user.value.deviceId),$($user.value.registrationDateTime),$($user.value.displayName)")
+            }
+            $CsvOutputUsersWithADevice.ToString() | Out-File  DuplicateDevices-AllUsersWithADevices.csv -Encoding ascii
+
+            Clear-Host
+            Write-Log "Sucecssfully exported CSV file."
+            Write-Host "Sucecssfully exported CSV file." -ForegroundColor Magenta
+        }catch{
+            Write-Log "An Error occurred exporting CSV file"
+            Write-Host "An Error occurred exporting CSV file" -ForegroundColor Red
+            Write-Error $_
+        }
+    }
+}
+
+Function Step5B{
+    if(([string]::IsNullOrEmpty($vars.AllUsers.WithNoDevice) -or ($vars.AllUsers.WithNoDevice.count -eq 0) ) -and ([string]::IsNullOrEmpty($vars.AllUsers.WithADevice) -or ($vars.AllUsers.WithADevice.count -eq 0))){
+        Write-Log "No devices found. please run option 5"
+        Write-Host "No devices found. please run option 5" -ForegroundColor Yellow
+    }else{
+        try{
+            # Export the hashtable as a JSON object
+            $jsonOutputADevice =  $vars.AllUsers.WithADevice | ConvertTo-Json
+            $jsonOutputADevice | Out-File DuplicateDevices-AllUsersWithADevices.json
+
+            $jsonOutputNoDevice =  $vars.AllUsers.WithNoDevice | ConvertTo-Json
+            $jsonOutputNoDevice | Out-File DuplicateDevices-AllUsersWithNoDevices.json
+            Clear-Host
+            Write-Log "Sucecssfully exported JSON file."
+            Write-Host "Sucecssfully exported JSON file." -ForegroundColor Magenta
+        }catch{
+            Write-Log "An Error occurred exporting JSON file"
+            Write-Host "An Error occurred exporting JSON file" -ForegroundColor Red
+            Write-Error $_
+        }
+    }
+}
+
+Function Step6{
+    #Users with no device
+    Write-Log "Prompt user to select CSV file from Windows Explorer: All users with no device"
+    Write-Host "Select CSV file from Windows Explorer: All users with no device"
+
+    #Get file from Windows Explorer
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
     
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    # $OpenFileDialog.initialDirectory = $initialDirectory
+    $OpenFileDialog.filter = "CSV (*.csv)| *.csv"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $pathToCsv = $OpenFileDialog.filename
+
+    Clear-Host
+    try{
+        Write-Log "Importing CSV file"
+        Write-Host "Importing CSV file"
+        $csvImport = Import-CSV $pathToCsv
+
+        $row = 1
+        $vars.AllUsers.WithNoDevice = @{}
+        foreach($user in $csvImport){
+
+            $row++
+            if([string]::IsNullOrEmpty($user.UserId) -or [string]::IsNullOrEmpty($user.UserPrincipalName)){
+                Write-Log "Error on row $row. Skipping row."
+                Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
+                if([string]::IsNullOrEmpty($user.UserId)){
+                    Write-Log "UserId is empty"
+                    Write-Host "UserId is empty"
+                }
+
+                if([string]::IsNullOrEmpty($user.UserPrincipalName)){
+                    Write-Log "UserPrincipalName is empty"
+                    Write-Host "UserPrincipalName is empty"
+                }
+
+                ''
+            }else{
+                
+                $vars.AllUsers.WithNoDevice.add($user.UserId, @{
+                    userId = $user.UserId
+                    userprincipalname = $user.UserPrincipalName
+                })
+            }
+        }
+
+        Clear-Host
+        Write-Log "Sucecssfully imported CSV file: $($OpenFileDialog.filename)"
+        Write-Host "Sucecssfully imported CSV file: $($OpenFileDialog.filename)" -ForegroundColor Magenta
+    }catch{
+        WRite-Log "An Error occurred reading CSV file"
+        Write-Host "An Error occurred reading CSV file" -ForegroundColor Red
+        Write-Error $_
+    }
+
+    #Users with a device
+    Write-Log "Prompt user to select CSV file from Windows Explorer: All users with a device"
+    Write-Host "Select CSV file from Windows Explorer: All users with a device"
+
+    #Get file from Windows Explorer
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
+    
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    # $OpenFileDialog.initialDirectory = $initialDirectory
+    $OpenFileDialog.filter = "CSV (*.csv)| *.csv"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $pathToCsv = $OpenFileDialog.filename
+
+    Clear-Host
+    try{
+        Write-Log "Importing CSV file"
+        Write-Host "Importing CSV file"
+        $csvImport = Import-CSV $pathToCsv
+
+        $row = 1
+        $vars.AllUsers.WithADevice = @{}
+        foreach($user in $csvImport){
+            $row++
+            if([string]::IsNullOrEmpty($user.UserPrincipalName) -or 
+                [string]::IsNullOrEmpty($user.approximateLastSignInDateTime) -or 
+                [string]::IsNullOrEmpty($user.createdDateTime) -or 
+                [string]::IsNullOrEmpty($user.deviceId) -or 
+                [string]::IsNullOrEmpty($user.registrationDateTime) -or 
+                [string]::IsNullOrEmpty($user.displayName)){
+
+                Write-Log "Error on row $row. Skipping row."
+                Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
+                if([string]::IsNullOrEmpty($user.UserPrincipalName)){
+                    Write-Log "UserPrincipalName is empty"
+                    Write-Host "UserPrincipalName is empty"
+                }
+
+                if([string]::IsNullOrEmpty($user.approximateLastSignInDateTime)){
+                    Write-Log "approximateLastSignInDateTime is empty"
+                    Write-Host "approximateLastSignInDateTime is empty"
+                }
+
+                if([string]::IsNullOrEmpty($user.createdDateTime)){
+                    Write-Log "createdDateTime is empty"
+                    Write-Host "createdDateTime is empty"
+                }
+
+                if([string]::IsNullOrEmpty($user.deviceId)){
+                    Write-Log "deviceId is empty"
+                    Write-Host "deviceId is empty"
+                }
+
+                if([string]::IsNullOrEmpty($user.registrationDateTime)){
+                    Write-Log "registrationDateTime is empty"
+                    Write-Host "registrationDateTime is empty"
+                }
+
+                if([string]::IsNullOrEmpty($user.displayName)){
+                    Write-Log "displayName is empty"
+                    Write-Host "displayName is empty"
+                }
+
+                ''
+            }else{
+                
+                $vars.AllUsers.WithADevice.add($user.deviceId, @{
+                    UserPrincipalName = $user.UserPrincipalName
+                    approximateLastSignInDateTime = $user.approximateLastSignInDateTime
+                    createdDateTime = $user.createdDateTime
+                    deviceId = $user.deviceId
+                    registrationDateTime = $user.registrationDateTime
+                    displayName = $user.displayName
+                })
+            }
+        }
+
+        Clear-Host
+        Write-Log "Sucecssfully imported CSV file: $($OpenFileDialog.filename)"
+        Write-Host "Sucecssfully imported CSV file: $($OpenFileDialog.filename)" -ForegroundColor Magenta
+    }catch{
+        WRite-Log "An Error occurred reading CSV file"
+        Write-Host "An Error occurred reading CSV file" -ForegroundColor Red
+        Write-Error $_
+    }
+}
+
+Function Step7{
+    #User with no device
+    #Get file from Windows Explorer
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
+    Write-Log "Prompt user to select JSON file from Windows Explorer: All users with no device"
+    Write-Host "Select JSON file from Windows Explorer: All users with no device"
+
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    # $OpenFileDialog.initialDirectory = $initialDirectory
+    $OpenFileDialog.filter = "JSON (*.json)| *.json"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $pathToJson = $OpenFileDialog.filename
+
+    Clear-Host
+    Write-Log "Importing JSON file"
+    Write-Host "Importing JSON file"
+
+    try {
+        $errorImportingDevice = 0
+        $jsonImport = Get-Content $pathToJson | ConvertFrom-Json 
+
+        $vars.AllUsers.WithNoDevice = @{}
+        foreach ($user in $jsonImport.PSObject.Properties.Value) {
+
+            if ([string]::IsNullOrEmpty($user.UserId) -or [string]::IsNullOrEmpty($user.UserPrincipalName)) {
+                Write-Log "Error on row $row. Skipping row."
+                Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
+                if ([string]::IsNullOrEmpty($user.UserId)) {
+                    Write-Log "UserId is empty"
+                    Write-Host "UserId is empty"
+                }
+
+                if ([string]::IsNullOrEmpty($user.UserPrincipalName)) {
+                    Write-Log "UserPrincipalName is empty"
+                    Write-Host "UserPrincipalName is empty"
+                }
+
+                ''
+            }
+            else {
+
+                $vars.AllUsers.WithNoDevice.add($user.UserId, @{
+                        userId            = $user.UserId
+                        userprincipalname = $user.UserPrincipalName
+                    })
+            }
+        }
+
+        if ($errorImportingDevice -gt 0) {
+            Write-Log "There is missing data in some of the json values. Please fix source data and re-run"
+            Write-Host "There is missing data in some of the json values. Please fix source data and re-run" -ForegroundColor Red
+            $vars.DevicesToCheck = @{}
+        }
+        else {
+            Clear-Host
+            Write-Log "Sucecssfully imported JSON file."
+            Write-Host "Sucecssfully imported JSON file." -ForegroundColor Magenta
+        }
+    }
+    catch {
+        Write-Log "An Error occurred reading JSON file" 
+        Write-Host "An Error occurred reading JSON file" -ForegroundColor Red
+        Write-Error $_
+    }
+
+    #User with a device
+    #Get file from Windows Explorer
+    [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
+    Write-Log "Prompt user to select JSON file from Windows Explorer: All users with a device"
+    Write-Host "Select JSON file from Windows Explorer: All users with a device"
+
+    $OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+    # $OpenFileDialog.initialDirectory = $initialDirectory
+    $OpenFileDialog.filter = "JSON (*.json)| *.json"
+    $OpenFileDialog.ShowDialog() | Out-Null
+    $pathToJson = $OpenFileDialog.filename
+
+    Clear-Host
+    Write-Log "Importing JSON file"
+    Write-Host "Importing JSON file"
+
+    try {
+        $errorImportingDevice = 0
+        $jsonImport = Get-Content $pathToJson | ConvertFrom-Json 
+
+        $vars.AllUsers.WithADevice = @{}
+        foreach ($user in $jsonImport.PSObject.Properties.Value) {
+
+            if ([string]::IsNullOrEmpty($user.UserPrincipalName) -or 
+                [string]::IsNullOrEmpty($user.approximateLastSignInDateTime) -or 
+                [string]::IsNullOrEmpty($user.createdDateTime) -or 
+                [string]::IsNullOrEmpty($user.deviceId) -or 
+                [string]::IsNullOrEmpty($user.registrationDateTime)) {
+
+                Write-Log "Error on row $row. Skipping row."
+                Write-Host "Error on row $row. Skipping row." -ForegroundColor Red
+                if ([string]::IsNullOrEmpty($user.UserPrincipalName)) {
+                    Write-Log "UserPrincipalName is empty"
+                    Write-Host "UserPrincipalName is empty"
+                }
+
+                if ([string]::IsNullOrEmpty($user.approximateLastSignInDateTime)) {
+                    Write-Log "approximateLastSignInDateTime is empty"
+                    Write-Host "approximateLastSignInDateTime is empty"
+                }
+
+                if ([string]::IsNullOrEmpty($user.createdDateTime)) {
+                    Write-Log "createdDateTime is empty"
+                    Write-Host "createdDateTime is empty"
+                }
+
+                if ([string]::IsNullOrEmpty($user.deviceId)) {
+                    Write-Log "deviceId is empty"
+                    Write-Host "deviceId is empty"
+                }
+
+                if ([string]::IsNullOrEmpty($user.registrationDateTime)) {
+                    Write-Log "registrationDateTime is empty"
+                    Write-Host "registrationDateTime is empty"
+                }
+
+                ''
+            }
+            else {
+                
+                $vars.AllUsers.WithADevice.add($user.deviceId, @{
+                        UserPrincipalName             = $user.UserPrincipalName
+                        approximateLastSignInDateTime = $user.approximateLastSignInDateTime
+                        createdDateTime               = $user.createdDateTime
+                        deviceId                      = $user.deviceId
+                        registrationDateTime          = $user.registrationDateTime
+                        displayName                   = $user.displayName
+                    })
+            }
+        }
+
+        if ($errorImportingDevice -gt 0) {
+            Write-Log "There is missing data in some of the json values. Please fix source data and re-run"
+            Write-Host "There is missing data in some of the json values. Please fix source data and re-run" -ForegroundColor Red
+            $vars.DevicesToCheck = @{}
+        }
+        else {
+            Clear-Host
+            Write-Log "Sucecssfully imported JSON file."
+            Write-Host "Sucecssfully imported JSON file." -ForegroundColor Magenta
+        }
+    }
+    catch {
+        Write-Log "An Error occurred reading JSON file" 
+        Write-Host "An Error occurred reading JSON file" -ForegroundColor Red
+        Write-Error $_
+    }
+}
+
+Function Step8{
+    #Users with no device
+    Write-Log "Entering Step 8: Comparing devices and users"
+    Write-Host "Comparing devices and users"
+
+    foreach($user in $vars.AllUsers.WithADevice.GetEnumerator()){
+        if(![string]::IsNullOrEmpty($vars.DevicesToCheck[$user.value.displayName][$user.Value.deviceId])){
+            $vars.DevicesToCheck[$user.value.displayName][$user.Value.deviceId].userPrincipalName = $user.Value.UserPrincipalName
+            $vars.DevicesToCheck[$user.value.displayName][$user.Value.deviceId].deleteStatus = "Do Not Delete"
+
+        }
+    }
+
+    Write-Host "Complete. Re-run 1a or 1b to export the results"
+    Write-Log "Complete. Re-run 1a or 1b to export the results"
+
 }
 
 Function menu{
+    #Device check
     if([string]::IsNullOrEmpty($vars.DevicesToCheck) -or $vars.DevicesToCheck.count -eq 0){
         $forgroundColour = "DarkGray"
         $numDevices = 0
@@ -1030,6 +1434,19 @@ Function menu{
         }
     }
 
+    #User check
+    if(([string]::IsNullOrEmpty($vars.AllUsers.WithNoDevice) -or ($vars.AllUsers.WithNoDevice.count -eq 0) ) -and ([string]::IsNullOrEmpty($vars.AllUsers.WithADevice) -or ($vars.AllUsers.WithADevice.count -eq 0))){
+        $userForgroundColour = "DarkGray"
+    }else{
+        $userForgroundColour = "Green"
+    }
+
+    if($userForgroundColour -notlike "Green" -and $forgroundColour -notlike "Green"){
+        $step8ForgroundColour = "DarkGray"
+    }else{
+        $step8ForgroundColour = "Green"
+    }
+
     '========================================================'
     Write-Host '          Azure AD Stale Device Clean UP Tool      ' -ForegroundColor Green 
     '========================================================'
@@ -1038,12 +1455,15 @@ Function menu{
     ''
     Write-Host "$($vars.DevicesToCheck.count) unique devices in memory" -ForegroundColor Magenta
     Write-Host "$numDevices total devices in memory" -ForegroundColor Magenta
+    Write-Host "$($vars.AllUsers.FromGraph.count) total users in memory from MS Graph" -ForegroundColor Magenta
+    Write-Host "    $($vars.AllUsers.WithNoDevice.count) total users with no device in memory" -ForegroundColor Magenta
+    Write-Host "    $($vars.AllUsers.WithADevice.count) devices with an associated user in memory" -ForegroundColor Magenta
     ''
     Write-Host "Enter (1) to get all Azure AD devices" -ForegroundColor Green
     ''
-    Write-Host "    Enter (a) to save devices in memory to csv" -ForegroundColor $forgroundColour
+    Write-Host "    Enter (1a) to save devices in memory to csv" -ForegroundColor $forgroundColour
     ''
-    Write-Host "    Enter (b) to save devices in memory to json" -ForegroundColor $forgroundColour
+    Write-Host "    Enter (1b) to save devices in memory to json" -ForegroundColor $forgroundColour
     ''
     Write-Host "Enter (2) to import devices from csv file" -ForegroundColor Green
     ''
@@ -1051,7 +1471,17 @@ Function menu{
     ''
     Write-Host "Enter (4) to delete devices" -ForegroundColor $forgroundColour
     ''
-    Write-Host "Enter (5) to get all Azure AD users" -ForegroundColor $forgroundColour
+    Write-Host "Enter (5) to get all Azure AD users and their devices" -ForegroundColor Green
+    ''
+    Write-Host "    Enter (5a) to save users and their devices in memory to csv" -ForegroundColor $userForgroundColour
+    ''
+    Write-Host "    Enter (5b) to save users and their devices in memory to json" -ForegroundColor $userForgroundColour
+    ''
+    Write-Host "Enter (6) to import users from csv file" -ForegroundColor Green
+    ''
+    Write-Host "Enter (7) to import users from json file" -ForegroundColor Green
+    ''
+    Write-Host "Enter (8) to compare users to devices" -ForegroundColor $step8ForgroundColour
     ''
     Write-Host "Enter (9) to Quit" -ForegroundColor Green
     ''
@@ -1059,7 +1489,7 @@ Function menu{
     $Selector =''
     $Selector = Read-Host -Prompt "Please make a selection, and press Enter" 
 
-    While(($Selector -ne '1') -AND ($Selector -ne 'a') -AND ($Selector -ne 'b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '5') -AND ($Selector -ne '9') -AND ($Selector -ne 'Debug')){
+    While(($Selector -ne '1') -AND ($Selector -ne '1a') -AND ($Selector -ne '1b') -AND ($Selector -ne '2') -AND ($Selector -ne '3') -AND ($Selector -ne '4') -AND ($Selector -ne '5') -AND ($Selector -ne '5a') -AND ($Selector -ne '5b') -AND ($Selector -ne '6') -AND ($Selector -ne '7') -AND ($Selector -ne '8') -AND ($Selector -ne '9') -AND ($Selector -ne 'Debug')){
 
         $Selector = Read-Host -Prompt "Invalid input. Please make a correct selection from the above options, and press Enter" 
         
@@ -1083,22 +1513,22 @@ function RunSelection{
         ''
         Invoke-CheckVariables
         Step1
-    }elseif($Selector -eq 'a'){
+    }elseif($Selector -eq '1a'){
         Clear-Host
 
         ''
         Write-Log "Menu Option: Save output as csv option has been chosen"
         Write-Host "Save output as csv option has been chosen" -BackgroundColor Black
         ''
-        StepA
-    }elseif($Selector -eq 'b'){
+        Step1A
+    }elseif($Selector -eq '1b'){
         Clear-Host
 
         ''
         Write-Log "Menu Option: Save output as json option has been chosen"
         Write-Host "Save output as json option has been chosen" -BackgroundColor Black
         ''
-        StepB
+        Step1B
     }elseif($Selector -eq '2'){
         Clear-Host
 
@@ -1131,6 +1561,44 @@ function RunSelection{
         ''
         Invoke-CheckVariables
         Step5
+    }elseif($Selector -eq '5a'){
+        Clear-Host
+        ''
+        Write-Log "Menu Option: Save users and their devices in memory to csv"
+        Write-Host "Save users and their devices in memory to csv" -BackgroundColor Black
+        ''
+        Invoke-CheckVariables
+        Step5A
+    }elseif($Selector -eq '5b'){
+        Clear-Host
+        ''
+        Write-Log "Menu Option: Save users and their devices in memory to json"
+        Write-Host "Save users and their devices in memory to json" -BackgroundColor Black
+        ''
+        Invoke-CheckVariables
+        Step5B
+    }elseif($Selector -eq '6'){
+        Clear-Host
+        ''
+        Write-Log "Menu Option: Import users from csv file option has been chosen"
+        Write-Host "Import users from csv file option has been chosen" -BackgroundColor Black
+        ''
+        Step6
+    }elseif($Selector -eq '7'){
+        Clear-Host
+        ''
+        Write-Log "Menu Option: Import users from json file option has been chosen"
+        Write-Host "Import users from json file option has been chosen" -BackgroundColor Black
+        ''
+        Step7
+    }elseif($Selector -eq '8'){
+        Clear-Host
+        ''
+        Write-Log "Menu Option: Compare users to existing devices"
+        Write-Host "Compare users to existing devices" -BackgroundColor Black
+        ''
+        Invoke-CheckVariables
+        Step8
     }elseif($Selector -eq 'Debug'){
         Write-Log "Menu Option: Debug option chosen"
         $vars.DelegateToken | ConvertTo-Json
