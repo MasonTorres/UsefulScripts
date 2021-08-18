@@ -1404,7 +1404,11 @@ Function Step8{
     Write-Log "Entering Step 8: Comparing devices and users"
     Write-Host "Comparing devices and users"
 
+    $count = 0
+    $totalUsers = $vars.AllUsers.WithADevice.count
     foreach($user in $vars.AllUsers.WithADevice.GetEnumerator()){
+        $count++
+        Write-Host -NoNewline "`rCamparing users and devices  $count / $totalUsers"
         if(![string]::IsNullOrEmpty($vars.DevicesToCheck[$user.value.displayName][$user.Value.deviceId])){
             $vars.DevicesToCheck[$user.value.displayName][$user.Value.deviceId].userPrincipalName = $user.Value.UserPrincipalName
             $vars.DevicesToCheck[$user.value.displayName][$user.Value.deviceId].deleteStatus = "Do Not Delete"
@@ -1412,7 +1416,7 @@ Function Step8{
         }
     }
 
-    Write-Host "Complete. Re-run 1a or 1b to export the results"
+    Write-Host "`nComplete. Re-run 1a or 1b to export the results" -ForegroundColor Magenta
     Write-Log "Complete. Re-run 1a or 1b to export the results"
 
 }
@@ -1597,7 +1601,6 @@ function RunSelection{
         Write-Log "Menu Option: Compare users to existing devices"
         Write-Host "Compare users to existing devices" -BackgroundColor Black
         ''
-        Invoke-CheckVariables
         Step8
     }elseif($Selector -eq 'Debug'){
         Write-Log "Menu Option: Debug option chosen"
